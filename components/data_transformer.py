@@ -4,24 +4,64 @@ import pandas as pd
 
 def pivot_existencias(df):
     """
-    Transforma el dataframe largo a formato ancho: Referencia vs Casa Matriz y Sucursales.
+    Pivot completo: Casa Matriz y Sucursales como columnas separadas (por región).
     """
-
-    # Tomamos las columnas necesarias
-    columnas = ['Referencia', 'Existencia_CasaMatriz', 'Existencia_Sucursales']
-
-    # Verifica si las columnas existen para evitar errores
-    for col in columnas:
+    columnas_necesarias = ['Referencia', 'Region', 'Existencia_Por_Tienda']
+    for col in columnas_necesarias:
         if col not in df.columns:
             raise ValueError(f"Falta la columna {col} en el dataframe")
 
-    # Genera el nuevo dataframe
-    df_pivot = df[columnas].drop_duplicates()
+    df_pivot = df.pivot_table(index='Referencia',
+                              columns='Region',
+                              values='Existencia_Por_Tienda',
+                              aggfunc='sum').reset_index()
 
-    # Renombrar para visualización limpia (opcional)
-    df_pivot = df_pivot.rename(columns={
-        'Existencia_CasaMatriz': 'Casa Matriz',
-        'Existencia_Sucursales': 'Sucursales'
-    })
+    columnas = ['Referencia'] + sorted([col for col in df_pivot.columns if col != 'Referencia'])
+    df_pivot = df_pivot[columnas]
+    return df_pivot
 
+def pivot_existencias_sucursales(df):
+    """
+    Solo sucursales como columnas.
+    """
+    columnas_necesarias = ['Referencia', 'Region', 'Existencia_Por_Tienda']
+    for col in columnas_necesarias:
+        if col not in df.columns:
+            raise ValueError(f"Falta la columna {col} en el dataframe")
+
+    sucursales = df[df['Region'].str.contains('Sucursales')]
+
+    if sucursales.empty:
+        raise ValueError("No hay datos de sucursales en el dataframe.")
+
+    df_pivot = sucursales.pivot_table(index='Referencia',
+                                      columns='Region',
+                                      values='Existencia_Por_Tienda',
+                                      aggfunc='sum').reset_index()
+
+    columnas = ['Referencia'] + sorted([col for col in df_pivot.columns if col != 'Referencia'])
+    df_pivot = df_pivot[columnas]
+    return df_pivot
+
+def pivot_existencias_casa_matriz(df):
+    """
+    Solo Casa Matriz como columnas.
+    """
+    columnas_necesarias = ['Referencia', 'Region', 'Existencia_Por_Tienda']
+    for col in columnas_necesarias:
+        if col not in df.columns:
+            raise ValueError(f"Falta la columna {col} en el dataframe")
+
+    matriz = df[df['Region'].str.contains('Casa Matriz')]
+
+    if matriz.empty:
+        raise ValueError("No hay datos de Casa Matriz en el dataframe.")
+
+    df_pivot = matriz.pivot_table(index='Referencia',
+                                  columns='Region',
+                                  values='Existencia_Por_Tienda',
+                                  aggfunc='sum').reset_index()
+
+    columnas = ['Referencia'] + sorted([col for col in df_pivot.columns if col != 'Referencia'])
+    df_pivot = df_pivot[columnas]
     return df_pivot
