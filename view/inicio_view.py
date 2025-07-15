@@ -4,7 +4,11 @@ import customtkinter as ctk
 from tkinter import ttk, messagebox
 import pandas as pd
 from components.query import INVENTORY_SQL
-from components.data_transformer import pivot_existencias, pivot_existencias_sucursales, pivot_existencias_casa_matriz
+from components.data_transformer import (
+    pivot_existencias,
+    pivot_existencias_sucursales_detallado,
+    pivot_existencias_casa_matriz
+)
 
 class InicioView(ctk.CTk):
     def __init__(self, engine):
@@ -53,7 +57,7 @@ class InicioView(ctk.CTk):
             opcion = self.pivot_selector.get()
 
             if opcion == "Solo Sucursales":
-                df_pivot = pivot_existencias_sucursales(self.df_original)
+                df_pivot = pivot_existencias_sucursales_detallado(self.df_original)
             elif opcion == "Solo Casa Matriz":
                 df_pivot = pivot_existencias_casa_matriz(self.df_original)
             else:

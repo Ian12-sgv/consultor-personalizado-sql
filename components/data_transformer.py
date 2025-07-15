@@ -20,11 +20,11 @@ def pivot_existencias(df):
     df_pivot = df_pivot[columnas]
     return df_pivot
 
-def pivot_existencias_sucursales(df):
+def pivot_existencias_sucursales_detallado(df):
     """
-    Solo sucursales como columnas.
+    Pivot con todas las sucursales detalladas por tienda (sin agrupar).
     """
-    columnas_necesarias = ['Referencia', 'Region', 'Existencia_Por_Tienda']
+    columnas_necesarias = ['Referencia', 'Region', 'NombreTienda', 'Existencia_Por_Tienda']
     for col in columnas_necesarias:
         if col not in df.columns:
             raise ValueError(f"Falta la columna {col} en el dataframe")
@@ -35,7 +35,7 @@ def pivot_existencias_sucursales(df):
         raise ValueError("No hay datos de sucursales en el dataframe.")
 
     df_pivot = sucursales.pivot_table(index='Referencia',
-                                      columns='Region',
+                                      columns='NombreTienda',
                                       values='Existencia_Por_Tienda',
                                       aggfunc='sum').reset_index()
 
@@ -45,7 +45,7 @@ def pivot_existencias_sucursales(df):
 
 def pivot_existencias_casa_matriz(df):
     """
-    Solo Casa Matriz como columnas.
+    Solo Casa Matriz como columnas (por región).
     """
     columnas_necesarias = ['Referencia', 'Region', 'Existencia_Por_Tienda']
     for col in columnas_necesarias:
