@@ -1,5 +1,3 @@
-# components/data_transformer.py
-
 import pandas as pd
 
 def pivot_existencias(df):
@@ -14,13 +12,16 @@ def pivot_existencias(df):
     df_pivot = df.pivot_table(index='Referencia',
                               columns='Region',
                               values='Existencia_Por_Tienda',
-                              aggfunc='sum').reset_index()
+                              aggfunc='sum').fillna(0).reset_index()
 
     columnas = ['Referencia'] + sorted([col for col in df_pivot.columns if col != 'Referencia'])
     df_pivot = df_pivot[columnas]
     return df_pivot
 
 def pivot_existencias_sucursales_detallado(df):
+    """
+    Pivot detallado por tienda (sin agrupar por región), solo sucursales.
+    """
     columnas_necesarias = ['Referencia', 'Region', 'NombreTienda', 'Existencia_Por_Tienda']
     for col in columnas_necesarias:
         if col not in df.columns:
@@ -29,18 +30,17 @@ def pivot_existencias_sucursales_detallado(df):
     sucursales = df[df['Region'].str.contains('Sucursales')]
 
     if sucursales.empty:
-        # Devuelve un dataframe vacío pero con columnas válidas, no un error
-        return pd.DataFrame(columns=['Referencia'] + ['NombreTienda', 'Existencia_Por_Tienda'])
+        # Devuelve un dataframe vacío pero con columnas válidas
+        return pd.DataFrame(columns=['Referencia'])
 
     df_pivot = sucursales.pivot_table(index='Referencia',
                                       columns='NombreTienda',
                                       values='Existencia_Por_Tienda',
-                                      aggfunc='sum').reset_index()
+                                      aggfunc='sum').fillna(0).reset_index()
 
     columnas = ['Referencia'] + sorted([col for col in df_pivot.columns if col != 'Referencia'])
     df_pivot = df_pivot[columnas]
     return df_pivot
-
 
 def pivot_existencias_casa_matriz(df):
     """
@@ -59,7 +59,7 @@ def pivot_existencias_casa_matriz(df):
     df_pivot = matriz.pivot_table(index='Referencia',
                                   columns='Region',
                                   values='Existencia_Por_Tienda',
-                                  aggfunc='sum').reset_index()
+                                  aggfunc='sum').fillna(0).reset_index()
 
     columnas = ['Referencia'] + sorted([col for col in df_pivot.columns if col != 'Referencia'])
     df_pivot = df_pivot[columnas]

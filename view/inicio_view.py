@@ -21,7 +21,7 @@ class InicioView(ctk.CTk):
         ctk.set_appearance_mode("dark")
         ctk.set_default_color_theme("blue")
 
-        self.grid_rowconfigure(3, weight=1)
+        self.grid_rowconfigure(4, weight=1)
         self.grid_columnconfigure(0, weight=1)
 
         # Dropdown principal (Tipo de vista)
@@ -34,17 +34,22 @@ class InicioView(ctk.CTk):
         self.region_selector.set("Todas")
         self.region_selector.grid(row=1, column=0, padx=10, pady=5, sticky="ew")
 
+        # Checkbox de vista detallada
+        self.detalle_var = ctk.BooleanVar(value=False)
+        self.check_detalle = ctk.CTkCheckBox(self, text="Mostrar vista detallada", variable=self.detalle_var, command=self.actualizar_treeview)
+        self.check_detalle.grid(row=2, column=0, padx=10, pady=5, sticky="w")
+
         # Botón importar datos
         self.button_importar = ctk.CTkButton(self, text="Importar Datos", command=self.importar_datos)
-        self.button_importar.grid(row=2, column=0, padx=10, pady=5, sticky="ew")
+        self.button_importar.grid(row=3, column=0, padx=10, pady=5, sticky="ew")
 
         # Treeview
         self.tree = ttk.Treeview(self, show="headings")
-        self.tree.grid(row=3, column=0, padx=10, pady=10, sticky="nsew")
+        self.tree.grid(row=4, column=0, padx=10, pady=10, sticky="nsew")
 
         self.scroll_x = ttk.Scrollbar(self, orient="horizontal", command=self.tree.xview)
         self.tree.configure(xscrollcommand=self.scroll_x.set, yscrollcommand=lambda *args: None)
-        self.scroll_x.grid(row=4, column=0, sticky="ew", padx=10)
+        self.scroll_x.grid(row=5, column=0, sticky="ew", padx=10)
 
     def importar_datos(self):
         try:
@@ -68,10 +73,10 @@ class InicioView(ctk.CTk):
 
         if opcion == "Solo Sucursales":
             self.region_selector.configure(state="normal")
-            self.region_selector.set("Todas")  # ✅ Resetea a "Todas" automáticamente
+            self.region_selector.set("Todas")  # ✅ Reactiva y pone en 'Todas' automáticamente
         else:
             self.region_selector.configure(state="disabled")
-            self.region_selector.set("Todas")  # ✅ Mantén el reset para consistencia
+            self.region_selector.set("Todas")
 
         self.actualizar_treeview()
 
@@ -82,22 +87,32 @@ class InicioView(ctk.CTk):
         try:
             opcion = self.pivot_selector.get()
             region_filtro = self.region_selector.get()
+            detalle = self.detalle_var.get()
+
+            df = self.df_original.copy()
 
             if opcion == "Solo Sucursales":
-                df = self.df_original
-
                 if region_filtro != "Todas":
                     df = df[df['Region'] == region_filtro]
 
-                df_pivot = pivot_existencias_sucursales_detallado(df)
+                if detalle:
+                    df_pivot = df.copy()  # Vista detallada sin pivot
+                else:
+                    df_pivot = pivot_existencias_sucursales_detallado(df)
 
             elif opcion == "Solo Casa Matriz":
-                df_pivot = pivot_existencias_casa_matriz(self.df_original)
+                if detalle:
+                    df_pivot = df[df['Region'].str.contains('Casa Matriz')]
+                else:
+                    df_pivot = pivot_existencias_casa_matriz(df)
 
-            else:
-                df_pivot = pivot_existencias(self.df_original)
+            else:  # Todo
+                if detalle:
+                    df_pivot = df.copy()
+                else:
+                    df_pivot = pivot_existencias(df)
 
-            # Mostrar en Treeview aunque esté vacío
+            # Mostrar en Treeview
             self.tree.delete(*self.tree.get_children())
 
             if df_pivot.empty:
