@@ -1,5 +1,3 @@
-# view/inicio_view.py
-
 import customtkinter as ctk
 from tkinter import ttk, messagebox
 import pandas as pd
@@ -18,36 +16,64 @@ class InicioView(ctk.CTk):
         self.df_original = None
 
         self.title("Inicio - Importación de Datos")
-        self.geometry("800x500")
+        self.geometry("900x600")
 
         ctk.set_appearance_mode("dark")
         ctk.set_default_color_theme("blue")
 
-        self.grid_rowconfigure(2, weight=1)
+        self.grid_rowconfigure(3, weight=1)
         self.grid_columnconfigure(0, weight=1)
 
-        # Nuevo dropdown con 3 opciones
-        self.pivot_selector = ctk.CTkComboBox(self, values=["Todo", "Solo Sucursales", "Solo Casa Matriz"], command=self.actualizar_treeview)
+        # Dropdown principal (Tipo de vista)
+        self.pivot_selector = ctk.CTkComboBox(self, values=["Todo", "Solo Sucursales", "Solo Casa Matriz"], command=self.on_tipo_cambio)
         self.pivot_selector.set("Todo")
-        self.pivot_selector.grid(row=0, column=0, padx=10, pady=10, sticky="ew")
+        self.pivot_selector.grid(row=0, column=0, padx=10, pady=5, sticky="ew")
 
+        # Dropdown secundario (Región de sucursales)
+        self.region_selector = ctk.CTkComboBox(self, values=["Todas"], command=self.actualizar_treeview, state="disabled")
+        self.region_selector.set("Todas")
+        self.region_selector.grid(row=1, column=0, padx=10, pady=5, sticky="ew")
+
+        # Botón importar datos
         self.button_importar = ctk.CTkButton(self, text="Importar Datos", command=self.importar_datos)
-        self.button_importar.grid(row=1, column=0, padx=10, pady=10, sticky="ew")
+        self.button_importar.grid(row=2, column=0, padx=10, pady=5, sticky="ew")
 
+        # Treeview
         self.tree = ttk.Treeview(self, show="headings")
-        self.tree.grid(row=2, column=0, padx=10, pady=10, sticky="nsew")
+        self.tree.grid(row=3, column=0, padx=10, pady=10, sticky="nsew")
 
         self.scroll_x = ttk.Scrollbar(self, orient="horizontal", command=self.tree.xview)
         self.tree.configure(xscrollcommand=self.scroll_x.set, yscrollcommand=lambda *args: None)
-        self.scroll_x.grid(row=3, column=0, sticky="ew", padx=10)
+        self.scroll_x.grid(row=4, column=0, sticky="ew", padx=10)
 
     def importar_datos(self):
         try:
             self.df_original = pd.read_sql(INVENTORY_SQL, self.engine)
+
+            # Cargar regiones de sucursales únicas para el segundo dropdown
+            sucursales = self.df_original[self.df_original['Region'].str.contains('Sucursales')]
+            regiones = sucursales['Region'].unique().tolist()
+            regiones.sort()
+            self.region_selector.configure(values=["Todas"] + regiones)
+            self.region_selector.set("Todas")
+
             self.actualizar_treeview()
-            messagebox.showinfo("Importación", f"Datos importados correctamente. Ahora puedes seleccionar el tipo de pivot.")
+
+            messagebox.showinfo("Importación", "Datos importados correctamente.")
         except Exception as e:
             messagebox.showerror("Error", f"Error al importar datos: {e}")
+
+    def on_tipo_cambio(self, *args):
+        opcion = self.pivot_selector.get()
+
+        if opcion == "Solo Sucursales":
+            self.region_selector.configure(state="normal")
+            self.region_selector.set("Todas")  # ✅ Resetea a "Todas" automáticamente
+        else:
+            self.region_selector.configure(state="disabled")
+            self.region_selector.set("Todas")  # ✅ Mantén el reset para consistencia
+
+        self.actualizar_treeview()
 
     def actualizar_treeview(self, *args):
         if self.df_original is None:
@@ -55,15 +81,30 @@ class InicioView(ctk.CTk):
 
         try:
             opcion = self.pivot_selector.get()
+            region_filtro = self.region_selector.get()
 
             if opcion == "Solo Sucursales":
-                df_pivot = pivot_existencias_sucursales_detallado(self.df_original)
+                df = self.df_original
+
+                if region_filtro != "Todas":
+                    df = df[df['Region'] == region_filtro]
+
+                df_pivot = pivot_existencias_sucursales_detallado(df)
+
             elif opcion == "Solo Casa Matriz":
                 df_pivot = pivot_existencias_casa_matriz(self.df_original)
+
             else:
                 df_pivot = pivot_existencias(self.df_original)
 
+            # Mostrar en Treeview aunque esté vacío
             self.tree.delete(*self.tree.get_children())
+
+            if df_pivot.empty:
+                self.tree["columns"] = ["Sin datos"]
+                self.tree.heading("Sin datos", text="Sin datos disponibles")
+                return
+
             self.tree["columns"] = list(df_pivot.columns)
 
             for col in df_pivot.columns:
