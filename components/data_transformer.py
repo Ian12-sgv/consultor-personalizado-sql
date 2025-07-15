@@ -1,28 +1,35 @@
 import pandas as pd
 
+CAMPOS_FIJOS = [
+    'concatenado', 'Referencia', 'CodigoMarca', 'NombreMarca',
+    'Nombre', 'Fabricante', 'NombreSubLinea', 'NombreCategoria', 'PorcentajeDescuento'
+]
+
 def pivot_existencias(df):
-    """
-    Pivot completo: Casa Matriz y Sucursales como columnas separadas (por región).
-    """
-    columnas_necesarias = ['Referencia', 'Region', 'Existencia_Por_Tienda']
+    columnas_necesarias = CAMPOS_FIJOS + ['Region', 'Existencia_Por_Tienda']
     for col in columnas_necesarias:
         if col not in df.columns:
             raise ValueError(f"Falta la columna {col} en el dataframe")
 
-    df_pivot = df.pivot_table(index='Referencia',
+    df_fijos = df[CAMPOS_FIJOS].drop_duplicates()
+
+    df_pivot = df.pivot_table(index='concatenado',
                               columns='Region',
                               values='Existencia_Por_Tienda',
-                              aggfunc='sum').fillna(0).reset_index()
+                              aggfunc='sum').reset_index()
 
-    columnas = ['Referencia'] + sorted([col for col in df_pivot.columns if col != 'Referencia'])
-    df_pivot = df_pivot[columnas]
-    return df_pivot
+    resultado = pd.merge(df_fijos, df_pivot, on='concatenado', how='left')
+
+    columnas_ordenadas = CAMPOS_FIJOS + sorted([col for col in resultado.columns if col not in CAMPOS_FIJOS and col != 'concatenado'])
+    resultado = resultado[columnas_ordenadas]
+
+    # Reemplazar NaN por 0
+    resultado = resultado.fillna(0)
+
+    return resultado
 
 def pivot_existencias_sucursales_detallado(df):
-    """
-    Pivot detallado por tienda (sin agrupar por región), solo sucursales.
-    """
-    columnas_necesarias = ['Referencia', 'Region', 'NombreTienda', 'Existencia_Por_Tienda']
+    columnas_necesarias = CAMPOS_FIJOS + ['Region', 'NombreTienda', 'Existencia_Por_Tienda']
     for col in columnas_necesarias:
         if col not in df.columns:
             raise ValueError(f"Falta la columna {col} en el dataframe")
@@ -30,23 +37,27 @@ def pivot_existencias_sucursales_detallado(df):
     sucursales = df[df['Region'].str.contains('Sucursales')]
 
     if sucursales.empty:
-        # Devuelve un dataframe vacío pero con columnas válidas
-        return pd.DataFrame(columns=['Referencia'])
+        return pd.DataFrame(columns=CAMPOS_FIJOS + ['Sin datos'])
 
-    df_pivot = sucursales.pivot_table(index='Referencia',
+    df_fijos = sucursales[CAMPOS_FIJOS].drop_duplicates()
+
+    df_pivot = sucursales.pivot_table(index='concatenado',
                                       columns='NombreTienda',
                                       values='Existencia_Por_Tienda',
-                                      aggfunc='sum').fillna(0).reset_index()
+                                      aggfunc='sum').reset_index()
 
-    columnas = ['Referencia'] + sorted([col for col in df_pivot.columns if col != 'Referencia'])
-    df_pivot = df_pivot[columnas]
-    return df_pivot
+    resultado = pd.merge(df_fijos, df_pivot, on='concatenado', how='left')
+
+    columnas_ordenadas = CAMPOS_FIJOS + sorted([col for col in resultado.columns if col not in CAMPOS_FIJOS and col != 'concatenado'])
+    resultado = resultado[columnas_ordenadas]
+
+    # Reemplazar NaN por 0
+    resultado = resultado.fillna(0)
+
+    return resultado
 
 def pivot_existencias_casa_matriz(df):
-    """
-    Solo Casa Matriz como columnas (por región).
-    """
-    columnas_necesarias = ['Referencia', 'Region', 'Existencia_Por_Tienda']
+    columnas_necesarias = CAMPOS_FIJOS + ['Region', 'Existencia_Por_Tienda']
     for col in columnas_necesarias:
         if col not in df.columns:
             raise ValueError(f"Falta la columna {col} en el dataframe")
@@ -54,13 +65,21 @@ def pivot_existencias_casa_matriz(df):
     matriz = df[df['Region'].str.contains('Casa Matriz')]
 
     if matriz.empty:
-        raise ValueError("No hay datos de Casa Matriz en el dataframe.")
+        return pd.DataFrame(columns=CAMPOS_FIJOS + ['Sin datos'])
 
-    df_pivot = matriz.pivot_table(index='Referencia',
+    df_fijos = matriz[CAMPOS_FIJOS].drop_duplicates()
+
+    df_pivot = matriz.pivot_table(index='concatenado',
                                   columns='Region',
                                   values='Existencia_Por_Tienda',
-                                  aggfunc='sum').fillna(0).reset_index()
+                                  aggfunc='sum').reset_index()
 
-    columnas = ['Referencia'] + sorted([col for col in df_pivot.columns if col != 'Referencia'])
-    df_pivot = df_pivot[columnas]
-    return df_pivot
+    resultado = pd.merge(df_fijos, df_pivot, on='concatenado', how='left')
+
+    columnas_ordenadas = CAMPOS_FIJOS + sorted([col for col in resultado.columns if col not in CAMPOS_FIJOS and col != 'concatenado'])
+    resultado = resultado[columnas_ordenadas]
+
+    # Reemplazar NaN por 0
+    resultado = resultado.fillna(0)
+
+    return resultado
