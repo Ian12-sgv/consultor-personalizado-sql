@@ -4,12 +4,13 @@ import customtkinter as ctk
 from tkinter import ttk, messagebox
 import pandas as pd
 from components.query import INVENTORY_SQL
+from components.data_transformer import pivot_existencias
 
 class InicioView(ctk.CTk):
     def __init__(self, engine):
         super().__init__()
 
-        self.engine = engine  # Usa el engine ya conectado
+        self.engine = engine
 
         self.title("Inicio - Importación de Datos")
         self.geometry("800x500")
@@ -34,16 +35,20 @@ class InicioView(ctk.CTk):
         try:
             df = pd.read_sql(INVENTORY_SQL, self.engine)
 
-            self.tree.delete(*self.tree.get_children())
-            self.tree["columns"] = list(df.columns)
+            # Aplica transformación
+            df_pivot = pivot_existencias(df)
 
-            for col in df.columns:
+            # Mostrar en Treeview
+            self.tree.delete(*self.tree.get_children())
+            self.tree["columns"] = list(df_pivot.columns)
+
+            for col in df_pivot.columns:
                 self.tree.heading(col, text=col)
 
-            for _, row in df.iterrows():
+            for _, row in df_pivot.iterrows():
                 self.tree.insert("", "end", values=list(row))
 
-            messagebox.showinfo("Importación", f"Se importaron {len(df)} filas correctamente.")
+            messagebox.showinfo("Importación", f"Se importaron {len(df_pivot)} filas correctamente.")
 
         except Exception as e:
             messagebox.showerror("Error", f"Error al importar datos: {e}")
