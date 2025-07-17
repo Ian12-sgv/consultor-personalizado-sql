@@ -1,0 +1,46 @@
+import pandas as pd
+from components.campofijos import CAMPOS_FIJOS
+
+def pivot_existencias_casa_matriz(df):
+    columnas_necesarias = CAMPOS_FIJOS + ['Region', 'Existencia_Por_Tienda']
+    for col in columnas_necesarias:
+        if col not in df.columns:
+            raise ValueError(f"Falta la columna {col} en el dataframe")
+
+    matriz = df[df['Region'].str.contains('Casa Matriz')]
+
+    if matriz.empty:
+        return pd.DataFrame(columns=CAMPOS_FIJOS + ['Sin datos'])
+
+    df_fijos = matriz[CAMPOS_FIJOS].drop_duplicates()
+
+    df_pivot = matriz.pivot_table(index='concatenado',
+                                  columns='Region',
+                                  values='Existencia_Por_Tienda',
+                                  aggfunc='sum').reset_index()
+
+    resultado = pd.merge(df_fijos, df_pivot, on='concatenado', how='left')
+
+    casas_matriz_cols = sorted([col for col in resultado.columns if col not in CAMPOS_FIJOS and col != 'concatenado'])
+
+    resultado['Casa_Matriz_Total'] = resultado[casas_matriz_cols].sum(axis=1)
+
+    resultado = resultado[resultado['Casa_Matriz_Total'] > 0].copy()
+
+    total_general = resultado['Casa_Matriz_Total'].sum()
+
+    if total_general > 0:
+        resultado['Porcentaje_CasaMatriz'] = resultado['Casa_Matriz_Total'].apply(
+            lambda x: round((x / total_general) * 100, 2)
+        ).astype(str) + '%'
+    else:
+        resultado['Porcentaje_CasaMatriz'] = '0%'
+
+    columnas_ordenadas = CAMPOS_FIJOS + casas_matriz_cols + ['Casa_Matriz_Total', 'Porcentaje_CasaMatriz']
+
+    resultado = resultado[columnas_ordenadas]
+
+    for col in casas_matriz_cols:
+        resultado[col] = resultado[col].fillna(0)
+
+    return resultado
