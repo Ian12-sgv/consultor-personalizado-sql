@@ -105,6 +105,7 @@ def pivot_existencias_casa_matriz(df):
         if col not in df.columns:
             raise ValueError(f"Falta la columna {col} en el dataframe")
 
+    # Filtrar solo Casa Matriz
     matriz = df[df['Region'].str.contains('Casa Matriz')]
 
     if matriz.empty:
@@ -121,14 +122,21 @@ def pivot_existencias_casa_matriz(df):
 
     casas_matriz_cols = sorted([col for col in resultado.columns if col not in CAMPOS_FIJOS and col != 'concatenado'])
 
+    # Calcular Casa_Matriz_Total sumando las casas matriz por fila
     resultado['Casa_Matriz_Total'] = resultado[casas_matriz_cols].sum(axis=1)
 
+    # Filtrar solo las filas donde haya al menos una existencia en Casa Matriz
+    resultado = resultado[resultado['Casa_Matriz_Total'] > 0].copy()
+
+    # Calcular total general de Casa Matriz solo con los visibles
     total_general = resultado['Casa_Matriz_Total'].sum()
 
-    # Porcentaje relativo al total de Casa Matriz
-    resultado['Porcentaje_CasaMatriz'] = resultado['Casa_Matriz_Total'].apply(
-        lambda x: round((x / total_general) * 100, 2) if total_general > 0 else 0
-    ).astype(str) + '%'
+    if total_general > 0:
+        resultado['Porcentaje_CasaMatriz'] = resultado['Casa_Matriz_Total'].apply(
+            lambda x: round((x / total_general) * 100, 2)
+        ).astype(str) + '%'
+    else:
+        resultado['Porcentaje_CasaMatriz'] = '0%'
 
     columnas_ordenadas = CAMPOS_FIJOS + casas_matriz_cols + ['Casa_Matriz_Total', 'Porcentaje_CasaMatriz']
 
@@ -141,3 +149,8 @@ def pivot_existencias_casa_matriz(df):
     resultado['Casa_Matriz_Total'] = resultado['Casa_Matriz_Total'].fillna(0)
 
     return resultado
+
+
+
+
+
