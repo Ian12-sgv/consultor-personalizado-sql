@@ -23,14 +23,20 @@ def pivot_existencias_sucursales_detallado(df):
 
     sucursal_cols = sorted([col for col in resultado.columns if col not in CAMPOS_FIJOS and col != 'concatenado'])
 
+    # Rellenar NaN con 0 en sucursales
+    for col in sucursal_cols:
+        resultado[col] = resultado[col].fillna(0)
+
     resultado['Sucursal_Total'] = resultado[sucursal_cols].sum(axis=1)
+
+    # ❗️Eliminar filas donde Sucursal_Total es 0
+    resultado = resultado[resultado['Sucursal_Total'] > 0].copy()
+
+    # Eliminar columna de porcentaje si no la quieres calcular (opcional)
+    # Si deseas dejarla vacía, mantenemos así:
     resultado['Porcentaje_Sucursales'] = ""
 
     columnas_ordenadas = CAMPOS_FIJOS + sucursal_cols + ['Sucursal_Total', 'Porcentaje_Sucursales']
-
     resultado = resultado[columnas_ordenadas]
-
-    for col in sucursal_cols:
-        resultado[col] = resultado[col].fillna(0)
 
     return resultado
