@@ -4,7 +4,6 @@
 
 INVENTORY_SQL = """
 WITH
--- 1) Agrego en InvPorTienda sólo filas con Existencia >= 0 y pre-agrego por Inventario+Tienda
 InvPorTienda AS (
   SELECT
     di.Referencia,
@@ -33,7 +32,8 @@ InvPorTienda AS (
     END AS Region,
     SUM(hi.Existencia) AS Existencia,
     MAX(hi.PrecioDetal) AS PrecioDetal,
-    MAX(hi.PrecioPromocion) AS PrecioPromocion
+    MAX(hi.PrecioPromocion) AS PrecioPromocion,
+    hi.Promocion AS Promocion
   FROM tbDimInventario di
   JOIN tbHecInventario hi
     ON di.dimID_Inventario = hi.dimid_inventario
@@ -51,7 +51,8 @@ InvPorTienda AS (
     dc.NombreSubLinea,
     di.NombreCategoria,
     dt.dimID_Tienda,
-    dt.Nombre
+    dt.Nombre,
+	hi.Promocion
 ),
 ReferenciasConPositivo AS (
   SELECT
@@ -71,16 +72,23 @@ SELECT
   d.Fabricante,
   d.NombreSubLinea,
   d.NombreCategoria,
-  CONCAT(CAST(ROUND((1.0 - (d.PrecioPromocion/NULLIF(d.PrecioDetal,0))) * 100, 0) AS INT), '%') AS PorcentajeDescuento,
+  CASE 
+    WHEN d.PrecioPromocion = 0 THEN '0%'
+    WHEN d.PrecioDetal = 0 THEN '0%'
+    WHEN d.PrecioPromocion = d.PrecioDetal THEN '0%'
+    ELSE CONCAT(CAST(ROUND((1.0 - (d.PrecioPromocion/NULLIF(d.PrecioDetal,0))) * 100, 0) AS INT), '%')
+  END AS Descuento,
   d.Region,
   d.NombreTienda,
-  d.Existencia AS Existencia_Por_Tienda,
-  SUM(CASE WHEN d.Region LIKE '%Casa Matriz' THEN d.Existencia ELSE 0 END) OVER (PARTITION BY d.Referencia, d.CodigoMarca) AS Existencia_CasaMatriz,
-  SUM(CASE WHEN d.Region LIKE '%Sucursales' THEN d.Existencia ELSE 0 END) OVER (PARTITION BY d.Referencia, d.CodigoMarca) AS Existencia_Sucursales
+  d.Existencia AS Existencia_Total,
+  d.Promocion,
+  SUM(CASE WHEN d.Region LIKE '%Casa Matriz' THEN d.Existencia ELSE 0 END) OVER (PARTITION BY d.Referencia, d.CodigoMarca) AS Existencia_Total_CasaMatriz,
+  SUM(CASE WHEN d.Region LIKE '%Sucursales' THEN d.Existencia ELSE 0 END) OVER (PARTITION BY d.Referencia, d.CodigoMarca) AS Existencia_Total_Sucursales
 FROM InvPorTienda d
 INNER JOIN ReferenciasConPositivo p
   ON p.Referencia = d.Referencia AND p.CodigoMarca = d.CodigoMarca
 ORDER BY d.Referencia;
+
 
 """
 

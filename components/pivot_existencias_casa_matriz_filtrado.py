@@ -2,7 +2,7 @@ import pandas as pd
 from components.campofijos import CAMPOS_FIJOS
 
 def pivot_existencias_casa_matriz_filtrado(df):
-    columnas_necesarias = CAMPOS_FIJOS + ['Region', 'Existencia_Por_Tienda']
+    columnas_necesarias = CAMPOS_FIJOS + ['Region', 'Existencia_Total']
     for col in columnas_necesarias:
         if col not in df.columns:
             raise ValueError(f"Falta la columna {col} en el dataframe")
@@ -17,7 +17,7 @@ def pivot_existencias_casa_matriz_filtrado(df):
     df_pivot = matriz.pivot_table(
         index='concatenado',
         columns='Region',
-        values='Existencia_Por_Tienda',
+        values='Existencia_Total',
         aggfunc='sum',
         fill_value=0
     ).reset_index()
@@ -30,20 +30,20 @@ def pivot_existencias_casa_matriz_filtrado(df):
     for col in casas_matriz_cols:
         resultado[col] = resultado[col].fillna(0)
 
-    resultado['Casa_Matriz_Total'] = resultado[casas_matriz_cols].sum(axis=1)
+    resultado['Casa_matriz_Total'] = resultado[casas_matriz_cols].sum(axis=1)
 
     # 🔥 Calcula el total de TODAS las casa matriz sin filtrar
-    total_global_casa_matriz = resultado['Casa_Matriz_Total'].sum()
+    total_global_casa_matriz = resultado['Casa_matriz_Total'].sum()
 
     # Calcula el porcentaje sobre el total global (aunque después filtres)
-    resultado['Porcentaje_CasaMatriz'] = resultado['Casa_Matriz_Total'].apply(
+    resultado['Descuento_CasaMatriz'] = resultado['Casa_matriz_Total'].apply(
         lambda x: round((x / total_global_casa_matriz) * 100, 2) if total_global_casa_matriz > 0 else 0
     ).astype(str) + '%'
 
     # Ahora sí, filtras los que tienen existencia > 0
-    resultado = resultado[resultado['Casa_Matriz_Total'] > 0].copy()
+    resultado = resultado[resultado['Casa_matriz_Total'] > 0].copy()
 
-    columnas_ordenadas = CAMPOS_FIJOS + casas_matriz_cols + ['Casa_Matriz_Total', 'Porcentaje_CasaMatriz']
+    columnas_ordenadas = CAMPOS_FIJOS + casas_matriz_cols + ['Casa_matriz_Total', 'Descuento_CasaMatriz']
 
     resultado = resultado[columnas_ordenadas]
 
