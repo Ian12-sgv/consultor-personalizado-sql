@@ -8,7 +8,7 @@ InvPorTienda AS (
   SELECT
     di.Referencia,
     di.CodigoMarca,
-    CONCAT(di.Referencia, di.CodigoMarca) AS concatenado,
+    CONCAT(di.Referencia, di.CodigoMarca) AS Concatenar,
     di.NombreMarca,
     di.Nombre,
     di.Fabricante,
@@ -66,7 +66,7 @@ ReferenciasConPositivo AS (
 )
 
 SELECT
-  d.concatenado,
+  d.Concatenar,
   d.Referencia,
   d.NombreMarca,
   d.CodigoMarca,

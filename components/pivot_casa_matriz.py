@@ -14,14 +14,14 @@ def pivot_existencias_casa_matriz(df, total_casa_matriz_global=None):
 
     df_fijos = matriz[CAMPOS_FIJOS].drop_duplicates()
 
-    df_pivot = matriz.pivot_table(index='concatenado',
+    df_pivot = matriz.pivot_table(index='Concatenar',
                                   columns='Region',
                                   values='Existencia_Total',
                                   aggfunc='sum').reset_index()
 
-    resultado = pd.merge(df_fijos, df_pivot, on='concatenado', how='left')
+    resultado = pd.merge(df_fijos, df_pivot, on='Concatenar', how='left')
 
-    casas_matriz_cols = sorted([col for col in resultado.columns if col not in CAMPOS_FIJOS and col != 'concatenado'])
+    casas_matriz_cols = sorted([col for col in resultado.columns if col not in CAMPOS_FIJOS and col != 'Concatenar'])
 
     resultado['Casa_matriz_Total'] = resultado[casas_matriz_cols].sum(axis=1)
 

@@ -13,12 +13,12 @@ def pivot_existencias(df):
     df['NombreTiendaDetallado'] = df['Region'] + ' - ' + df['NombreTienda']
 
     # Pivot detallado por tienda y región combinadas
-    df_pivot = df.pivot_table(index='concatenado',
+    df_pivot = df.pivot_table(index='Concatenar',
                               columns='NombreTiendaDetallado',
                               values='Existencia_Total',
                               aggfunc='sum').reset_index()
 
-    resultado = pd.merge(df_fijos, df_pivot, on='concatenado', how='left')
+    resultado = pd.merge(df_fijos, df_pivot, on='Concatenar', how='left')
 
     # Separar columnas de casa matriz y sucursales
     casas_matriz_cols = [col for col in df_pivot.columns if 'Casa Matriz' in str(col)]

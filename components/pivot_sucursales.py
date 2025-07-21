@@ -14,14 +14,14 @@ def pivot_existencias_sucursales_detallado(df):
 
     df_fijos = sucursales[CAMPOS_FIJOS].drop_duplicates()
 
-    df_pivot = sucursales.pivot_table(index='concatenado',
+    df_pivot = sucursales.pivot_table(index='Concatenar',
                                       columns='NombreTienda',
                                       values='Existencia_Total',
                                       aggfunc='sum').reset_index()
 
-    resultado = pd.merge(df_fijos, df_pivot, on='concatenado', how='left')
+    resultado = pd.merge(df_fijos, df_pivot, on='Concatenar', how='left')
 
-    sucursal_cols = sorted([col for col in resultado.columns if col not in CAMPOS_FIJOS and col != 'concatenado'])
+    sucursal_cols = sorted([col for col in resultado.columns if col not in CAMPOS_FIJOS and col != 'Concatenar'])
 
     # Rellenar NaN con 0 en sucursales
     for col in sucursal_cols:

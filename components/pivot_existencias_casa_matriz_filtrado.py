@@ -15,16 +15,16 @@ def pivot_existencias_casa_matriz_filtrado(df):
     df_fijos = matriz[CAMPOS_FIJOS].drop_duplicates()
 
     df_pivot = matriz.pivot_table(
-        index='concatenado',
+        index='Concatenar',
         columns='Region',
         values='Existencia_Total',
         aggfunc='sum',
         fill_value=0
     ).reset_index()
 
-    resultado = pd.merge(df_fijos, df_pivot, on='concatenado', how='left')
+    resultado = pd.merge(df_fijos, df_pivot, on='Concatenar', how='left')
 
-    casas_matriz_cols = [col for col in df_pivot.columns if col != 'concatenado']
+    casas_matriz_cols = [col for col in df_pivot.columns if col != 'Concatenar']
     casas_matriz_cols.sort()
 
     for col in casas_matriz_cols:
