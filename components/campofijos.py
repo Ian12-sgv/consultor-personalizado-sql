@@ -1,4 +1,4 @@
 CAMPOS_FIJOS = [
     'concatenado', 'Referencia', 'CodigoMarca', 'NombreMarca',
-    'Nombre', 'Fabricante', 'NombreSubLinea', 'NombreCategoria', 'Descuento'
+    'Nombre', 'Fabricante', 'Linea','Encargado', 'NombreCategoria', 'Descuento'
 ]

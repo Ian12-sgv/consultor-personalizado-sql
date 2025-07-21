@@ -13,6 +13,7 @@ InvPorTienda AS (
     di.Nombre,
     di.Fabricante,
     dc.NombreSubLinea,
+    dc.Nombre AS NombreCategoriaPrincipal,
     di.NombreCategoria,
     dt.dimID_Tienda,
     dt.Nombre AS NombreTienda,
@@ -49,10 +50,11 @@ InvPorTienda AS (
     di.Nombre,
     di.Fabricante,
     dc.NombreSubLinea,
+    dc.Nombre,
     di.NombreCategoria,
     dt.dimID_Tienda,
     dt.Nombre,
-	hi.Promocion
+    hi.Promocion
 ),
 ReferenciasConPositivo AS (
   SELECT
@@ -70,7 +72,8 @@ SELECT
   d.CodigoMarca,
   d.Nombre,
   d.Fabricante,
-  d.NombreSubLinea,
+  d.NombreSubLinea AS Linea,
+  d.NombreCategoriaPrincipal,
   d.NombreCategoria,
   CASE 
     WHEN d.PrecioPromocion = 0 THEN '0%'
@@ -78,17 +81,27 @@ SELECT
     WHEN d.PrecioPromocion = d.PrecioDetal THEN '0%'
     ELSE CONCAT(CAST(ROUND((1.0 - (d.PrecioPromocion/NULLIF(d.PrecioDetal,0))) * 100, 0) AS INT), '%')
   END AS Descuento,
+  
+  -- Asignación de encargado
+  CASE 
+    WHEN d.NombreSubLinea IN ('PANTYS','BRASSIER','BOXER / INTERIOR','PIJAMA','PIJAMAS','ROPA EXTERIOR','ROPA DEPORTIVA','ROPA DE PLAYA','LENCERIA','FAJAS','CALCETERÍA','ARTICULOS DE SERVICIO','ACCESORIOS') THEN 'Raul'
+    WHEN d.NombreSubLinea IN ('COSM TICOS','BISUTERIA - JOYERIA','HIGIENE - CUIDADO PERSONAL','MAQUILLAJE','BISUTERIA- CABELLO','U AS','BOLSAS DE REGALO') THEN 'Jesenia'
+    WHEN d.NombreSubLinea IN ('CALZADOS','BOLSOS','HOGAR','TEXTILES HOGAR','GORRAS / PASAMONTA AS0','LENTES','ESCOLAR','PAPELERIA ESCOLAR','BALONES') THEN 'Dairo'
+    ELSE 'Sin encargado'
+  END AS Encargado,
+  
   d.Region,
   d.NombreTienda,
   d.Existencia AS Existencia_Total,
   d.Promocion,
+  
   SUM(CASE WHEN d.Region LIKE '%Casa Matriz' THEN d.Existencia ELSE 0 END) OVER (PARTITION BY d.Referencia, d.CodigoMarca) AS Existencia_Total_CasaMatriz,
   SUM(CASE WHEN d.Region LIKE '%Sucursales' THEN d.Existencia ELSE 0 END) OVER (PARTITION BY d.Referencia, d.CodigoMarca) AS Existencia_Total_Sucursales
+
 FROM InvPorTienda d
 INNER JOIN ReferenciasConPositivo p
   ON p.Referencia = d.Referencia AND p.CodigoMarca = d.CodigoMarca
 ORDER BY d.Referencia;
-
 
 """
 
