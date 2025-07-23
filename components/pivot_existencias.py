@@ -33,26 +33,26 @@ def pivot_existencias(df):
     resultado['Total_Existencia'] = resultado['Casa_matriz_Total'] + resultado['Sucursal_Total']
 
     # Calcular porcentajes
-    resultado['Descuento_CasaMatriz'] = resultado.apply(
+    resultado['Porcentaje_Existencia_CasaMatriz'] = resultado.apply(
         lambda row: round((row['Casa_matriz_Total'] / row['Total_Existencia']) * 100, 2) if row['Total_Existencia'] > 0 else 0,
         axis=1
     )
 
-    resultado['Descuento_Sucursales'] = resultado.apply(
+    resultado['Porcentaje_Existencia_Sucursales'] = resultado.apply(
         lambda row: round((row['Sucursal_Total'] / row['Total_Existencia']) * 100, 2) if row['Total_Existencia'] > 0 else 0,
         axis=1
     )
 
     # Formato %
-    resultado['Descuento_CasaMatriz'] = resultado['Descuento_CasaMatriz'].astype(str) + '%'
-    resultado['Descuento_Sucursales'] = resultado['Descuento_Sucursales'].astype(str) + '%'
+    resultado['Porcentaje_Existencia_CasaMatriz'] = resultado['Porcentaje_Existencia_CasaMatriz'].astype(str) + '%'
+    resultado['Porcentaje_Existencia_Sucursales'] = resultado['Porcentaje_Existencia_Sucursales'].astype(str) + '%'
 
     # Ordenar columnas
     columnas_ordenadas = (
     CAMPOS_FIJOS +
     casas_matriz_cols + sucursales_cols +
     ['Sucursal_Total','Casa_matriz_Total'] +
-    ['Descuento_CasaMatriz', 'Descuento_Sucursales']
+    ['Porcentaje_Existencia_CasaMatriz', 'Porcentaje_Existencia_Sucursales']
 )
 
 

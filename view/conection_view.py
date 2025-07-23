@@ -1,11 +1,7 @@
-# view/conection_view.py
-
 import customtkinter as ctk
 from utils.db_utils import ConnectionManager
 from utils.my_sql_detector import load_history
 from tkinter import messagebox
-
-# Importar InicioView para redirección
 from view.inicio_view import InicioView
 
 class ConnectionView(ctk.CTk):
@@ -20,6 +16,9 @@ class ConnectionView(ctk.CTk):
 
         self.conn_manager = ConnectionManager()
 
+        self.setup_widgets()
+
+    def setup_widgets(self):
         # Cargar historial de instancias
         historial = load_history()
         instancia_values = []
@@ -33,7 +32,7 @@ class ConnectionView(ctk.CTk):
         if not instancia_values:
             instancia_values = ["SERVERDOS\\SERVERSQL_DOS"]
 
-        # UI: solo ComboBox
+        # UI
         self.label_instancia = ctk.CTkLabel(self, text="Instancia SQL Server:")
         self.label_instancia.pack(pady=5)
 
@@ -41,7 +40,6 @@ class ConnectionView(ctk.CTk):
         self.combo_instancias.set(instancia_values[0])
         self.combo_instancias.pack(pady=5)
 
-        # Usuario y contraseña
         self.label_usuario = ctk.CTkLabel(self, text="Usuario:")
         self.label_usuario.pack(pady=5)
 
@@ -88,11 +86,17 @@ class ConnectionView(ctk.CTk):
         if success:
             messagebox.showinfo("Conexión", f"Conectado a la base: {base}")
 
+            config_sql = {
+                "server_name": self.combo_instancias.get(),
+                "database": base,
+                "login": self.entry_usuario.get(),
+                "password": self.entry_password.get()
+            }
+
             self.quit()
             self.destroy()
 
-        # Pasar el engine conectado al InicioView
-            inicio = InicioView(self.conn_manager.engine)
+            inicio = InicioView(self.conn_manager.engine, config_sql)
             inicio.mainloop()
 
         else:

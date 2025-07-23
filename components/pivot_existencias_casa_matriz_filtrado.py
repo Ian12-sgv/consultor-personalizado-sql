@@ -36,14 +36,14 @@ def pivot_existencias_casa_matriz_filtrado(df):
     total_global_casa_matriz = resultado['Casa_matriz_Total'].sum()
 
     # Calcula el porcentaje sobre el total global (aunque después filtres)
-    resultado['Descuento_CasaMatriz'] = resultado['Casa_matriz_Total'].apply(
+    resultado['Porcentaje_Existencia_CasaMatriz'] = resultado['Casa_matriz_Total'].apply(
         lambda x: round((x / total_global_casa_matriz) * 100, 2) if total_global_casa_matriz > 0 else 0
     ).astype(str) + '%'
 
     # Ahora sí, filtras los que tienen existencia > 0
     resultado = resultado[resultado['Casa_matriz_Total'] > 0].copy()
 
-    columnas_ordenadas = CAMPOS_FIJOS + casas_matriz_cols + ['Casa_matriz_Total', 'Descuento_CasaMatriz']
+    columnas_ordenadas = CAMPOS_FIJOS + casas_matriz_cols + ['Casa_matriz_Total', 'Porcentaje_Existencia_CasaMatriz']
 
     resultado = resultado[columnas_ordenadas]
 

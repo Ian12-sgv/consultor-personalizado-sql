@@ -27,11 +27,11 @@ def pivot_existencias_casa_matriz(df, total_casa_matriz_global=None):
 
     total_general = total_casa_matriz_global if total_casa_matriz_global is not None else resultado['Casa_matriz_Total'].sum()
 
-    resultado['Descuento_CasaMatriz'] = resultado['Casa_matriz_Total'].apply(
+    resultado['Porcentaje_Existencia_CasaMatriz'] = resultado['Casa_matriz_Total'].apply(
         lambda x: round((x / total_general) * 100, 2) if total_general > 0 else 0
     ).astype(str) + '%'
 
-    columnas_ordenadas = CAMPOS_FIJOS + casas_matriz_cols + ['Casa_matriz_Total', 'Descuento_CasaMatriz']
+    columnas_ordenadas = CAMPOS_FIJOS + casas_matriz_cols + ['Casa_matriz_Total', 'Porcentaje_Existencia_CasaMatriz']
 
     resultado = resultado[columnas_ordenadas]
 
