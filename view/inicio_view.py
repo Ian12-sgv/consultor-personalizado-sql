@@ -5,7 +5,7 @@ from tkinter import ttk, messagebox
 import pandas as pd
 
 from components.query import INVENTORY_SQL
-from components.exporter import exportar_dataframe_a_excel
+from components.exporter import exportar_dataframe_a_excel, export_pdfs_por_sucursal
 from components.ui.placeholder_combo import PlaceholderCombo
 from components.ui.debounce import Debouncer
 from components.ui.treeview_renderer import render as render_tree
@@ -15,7 +15,6 @@ from components.services.filter_service import apply_filters
 PLACEHOLDER_REGION     = "Región"
 PLACEHOLDER_MARCA      = "Código de marca"
 PLACEHOLDER_REFERENCIA = "Referencia"
-
 
 class InicioView(ctk.CTk):
     def __init__(self, engine, config_sql):
@@ -39,6 +38,7 @@ class InicioView(ctk.CTk):
         self.grid_columnconfigure(0, weight=1)
 
         self._build_ui()
+        self._style_treeview()
 
     # ------------------------------ UI ---------------------------------
     def _build_ui(self):
@@ -90,7 +90,7 @@ class InicioView(ctk.CTk):
         self.referencia_entry.bind("<KeyRelease>", lambda e: self._debounce_ref.call(self._update_view))
 
         # Excluir códigos GRD/DNE/DIE
-        self.exclude_var = ctk.BooleanVar(value=False)
+        self.exclude_var = ctk.BooleanVar(master=self, value=False)
         self.chk_excluir = ctk.CTkCheckBox(
             filtro_frame,
             text="Excluir códigos GRD / DNE / DIE",
@@ -100,7 +100,7 @@ class InicioView(ctk.CTk):
         self.chk_excluir.grid(row=3, column=0, padx=10, pady=5, sticky="w", columnspan=2)
 
         # Solo Promoción = 1
-        self.promo_var = ctk.BooleanVar(value=False)
+        self.promo_var = ctk.BooleanVar(master=self, value=False)
         self.chk_promo = ctk.CTkCheckBox(
             filtro_frame,
             text="Solo filas con Promoción = 1",
@@ -112,12 +112,14 @@ class InicioView(ctk.CTk):
         # Botones
         boton_frame = ctk.CTkFrame(self)
         boton_frame.grid(row=1, column=0, padx=10, pady=5, sticky="ew")
-        boton_frame.grid_columnconfigure((0, 1), weight=1)
+        boton_frame.grid_columnconfigure((0, 1, 2), weight=1)
 
         ctk.CTkButton(boton_frame, text="Importar Datos", command=self.importar_datos)\
-            .grid(row=0, column=0, padx=10, pady=5, sticky="ew")
+            .grid(row=0, column=0, padx=5, pady=5, sticky="ew")
         ctk.CTkButton(boton_frame, text="Exportar a Excel", command=self.exportar_excel)\
-            .grid(row=0, column=1, padx=10, pady=5, sticky="ew")
+            .grid(row=0, column=1, padx=5, pady=5, sticky="ew")
+        ctk.CTkButton(boton_frame, text="Exportar PDF", command=self._open_pdf_selector)\
+            .grid(row=0, column=2, padx=5, pady=5, sticky="ew")
 
         # Treeview
         self.tree = ttk.Treeview(self, show="headings")
@@ -136,6 +138,7 @@ class InicioView(ctk.CTk):
             suc = self.df_original[self.df_original['Region'].str.contains('Sucursales', na=False)]
             regiones = ["Todas"] + sorted(suc['Region'].dropna().unique().tolist())
             self.region_selector.reset_placeholder(values=regiones)
+            self.region_selector.configure(state="disabled")
 
             # Marcas
             codigos = sorted(self.df_original['CodigoMarca'].dropna().astype(str).unique().tolist())
@@ -193,20 +196,93 @@ class InicioView(ctk.CTk):
             solo_promo_1=solo_1
         )
 
-        # ---- Normalizar Promocion a 0/1 antes de renderizar ----
+        # Normalizar Promocion a 0/1
         if 'Promocion' in df_view.columns:
             serie = df_view['Promocion']
             df_view['Promocion'] = (
                 serie.map({True: 1, False: 0, 'True': 1, 'False': 0,
                            'true': 1, 'false': 0, '1': 1, '0': 0})
-                     .fillna(serie)   # mantiene si ya es 0/1 numérico
+                     .fillna(serie)
                      .astype(int, errors='ignore')
             )
-        # ---------------------------------------------------------
 
         self.df_actual = df_view.copy()
         render_tree(self.tree, df_view)
 
+    # -------------------------- PDF MODAL ---------------------------------
+    def _open_pdf_selector(self):
+        if self.df_actual is None or self.df_actual.empty:
+            messagebox.showwarning("Sin datos", "Primero importa o filtra datos.")
+            return
+
+        # Columnas de sucursales disponibles
+        sucursales = [c for c in self.df_actual.columns
+                      if c not in ['Concatenar',
+                                   'Sucursal_Total','Casa_matriz_Total',
+                                   'Total_Existencia',
+                                   'Porcentaje_Existencia_CasaMatriz',
+                                   'Porcentaje_Existencia_Sucursales']]
+        if not sucursales:
+            messagebox.showinfo("Sin sucursales", "No hay columnas de sucursales para exportar.")
+            return
+
+        modal = ctk.CTkToplevel(self)
+        modal.title("Seleccionar sucursales para PDF")
+        modal.geometry("320x400")
+        modal.transient(self)
+
+        scroll = ctk.CTkScrollableFrame(modal, width=300, height=300)
+        scroll.pack(padx=10, pady=10, fill="both", expand=True)
+
+        vars_chk = {}
+        for suc in sucursales:
+            var = ctk.BooleanVar(master=modal, value=False)
+            chk = ctk.CTkCheckBox(scroll, text=suc, variable=var)
+            chk.pack(anchor="w", pady=2)
+            vars_chk[suc] = var
+
+        btn_frame = ctk.CTkFrame(modal)
+        btn_frame.pack(fill="x", padx=10, pady=(0,10))
+
+        ctk.CTkButton(btn_frame, text="Cancelar", fg_color="gray", hover_color="darkgray",
+                      command=modal.destroy).pack(side="right", padx=(0,5))
+        def _confirm():
+            seleccion = [s for s,v in vars_chk.items() if v.get()]
+            modal.destroy()
+            if seleccion:
+                self._exportar_pdfs_sucursales(seleccion)
+        ctk.CTkButton(btn_frame, text="Aceptar", fg_color="#2ecc71", hover_color="#27ae60",
+                      command=_confirm).pack(side="right")
+
+    def _exportar_pdfs_sucursales(self, sucursales):
+        try:
+            carpeta = export_pdfs_por_sucursal(self.df_actual, sucursales)
+            messagebox.showinfo("PDFs generados", f"Se han generado los PDFs en:\n{carpeta}")
+        except Exception as e:
+            messagebox.showerror("Error al exportar PDFs", str(e))
+
     # -------------------------- EXPORT ---------------------------------
     def exportar_excel(self):
         exportar_dataframe_a_excel(self.df_actual)
+
+    # -------------------------- STYLE TREEVIEW -------------------------
+    def _style_treeview(self):
+        style = ttk.Style()
+        style.theme_use("default")
+
+        style.configure("Treeview.Heading",
+                        font=("Segoe UI", 10, "bold"),
+                        foreground="#ffffff",
+                        background="#1f6aa5")
+        style.map("Treeview.Heading",
+                  background=[("active", "#18527d")])
+
+        style.configure("Treeview",
+                        font=("Segoe UI", 10),
+                        rowheight=22,
+                        background="#1e1e1e",
+                        fieldbackground="#1e1e1e",
+                        foreground="#e5e5e5")
+        style.map("Treeview",
+                  background=[("selected", "#1f6aa5")],
+                  foreground=[("selected", "white")])

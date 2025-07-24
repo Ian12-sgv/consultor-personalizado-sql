@@ -43,7 +43,7 @@ def pivot_existencias_casa_matriz_filtrado(df):
     # Ahora sí, filtras los que tienen existencia > 0
     resultado = resultado[resultado['Casa_matriz_Total'] > 0].copy()
 
-    columnas_ordenadas = CAMPOS_FIJOS + casas_matriz_cols + ['Casa_matriz_Total', 'Porcentaje_Existencia_CasaMatriz']
+    columnas_ordenadas = CAMPOS_FIJOS + casas_matriz_cols + ['Casa_matriz_Total']
 
     resultado = resultado[columnas_ordenadas]
 

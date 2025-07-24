@@ -34,9 +34,9 @@ def pivot_existencias_sucursales_detallado(df):
 
     # Eliminar columna de porcentaje si no la quieres calcular (opcional)
     # Si deseas dejarla vacía, mantenemos así:
-    resultado['Porcentaje_Existencia_Sucursales'] = ""
+    #resultado['Porcentaje_Existencia_Sucursales'] = ""
 
-    columnas_ordenadas = CAMPOS_FIJOS + sucursal_cols + ['Sucursal_Total', 'Porcentaje_Existencia_Sucursales']
+    columnas_ordenadas = CAMPOS_FIJOS + sucursal_cols + ['Sucursal_Total']
     resultado = resultado[columnas_ordenadas]
 
     return resultado

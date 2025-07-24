@@ -3,20 +3,20 @@
 # Aquí se aloja la consulta SQL optimizada (o vista) para el inventario
 
 INVENTORY_SQL = """
-WITH
-InvPorTienda AS (
+WITH InvPorTienda AS (
   SELECT
     di.Referencia,
     di.CodigoMarca,
+    di.CodigoBarra                AS CodigoBarra,       -- <- añadido
     CONCAT(di.Referencia, di.CodigoMarca) AS Concatenar,
     di.NombreMarca,
     di.Nombre,
     di.Fabricante,
     dc.NombreSubLinea,
-    dc.Nombre AS NombreCategoriaPrincipal,
+    dc.Nombre                    AS NombreCategoriaPrincipal,
     di.NombreCategoria,
     dt.dimID_Tienda,
-    dt.Nombre AS NombreTienda,
+    dt.Nombre                    AS NombreTienda,
     CASE 
       WHEN dt.dimID_Tienda = 2003 THEN 'Valencia Casa Matriz'
       WHEN dt.dimID_Tienda = 2005 THEN 'Oriente - Casa Matriz'
@@ -30,15 +30,16 @@ InvPorTienda AS (
                                1047,1048,1050,1052,1053,1055,2007) THEN 'Occidente - Sucursales'
       WHEN dt.dimID_Tienda IN (1032,1033,1034,1035,1036) THEN 'Margarita - Sucursales'
       ELSE 'Sin region'
-    END AS Region,
-    SUM(hi.Existencia) AS Existencia,
-    MAX(hi.PrecioDetal) AS PrecioDetal,
-    MAX(hi.PrecioPromocion) AS PrecioPromocion,
-    hi.Promocion AS Promocion
+    END                           AS Region,
+    SUM(hi.Existencia)           AS Existencia,
+    MAX(hi.PrecioDetal)          AS PrecioDetal,
+    MAX(hi.PrecioPromocion)      AS PrecioPromocion,
+    hi.Promocion                 AS Promocion,
+    hi.Status                    AS Status
   FROM tbDimInventario di
   JOIN tbHecInventario hi
     ON di.dimID_Inventario = hi.dimid_inventario
-       AND hi.Existencia >= 0
+   AND hi.Existencia >= 0
   JOIN tbDimTiendas dt
     ON hi.dimid_tienda = dt.dimID_Tienda
   JOIN tbDimCategorias dc
@@ -46,6 +47,7 @@ InvPorTienda AS (
   GROUP BY
     di.Referencia,
     di.CodigoMarca,
+    di.CodigoBarra,               -- <- añadido
     di.NombreMarca,
     di.Nombre,
     di.Fabricante,
@@ -54,7 +56,8 @@ InvPorTienda AS (
     di.NombreCategoria,
     dt.dimID_Tienda,
     dt.Nombre,
-    hi.Promocion
+    hi.Promocion,
+    hi.Status
 ),
 ReferenciasConPositivo AS (
   SELECT
@@ -68,40 +71,60 @@ ReferenciasConPositivo AS (
 SELECT
   d.Concatenar,
   d.Referencia,
+  d.CodigoBarra,                 -- <- añadido
   d.NombreMarca,
   d.CodigoMarca,
   d.Nombre,
   d.Fabricante,
-  d.NombreSubLinea AS Linea,
+  d.NombreSubLinea              AS Linea,
   d.NombreCategoriaPrincipal,
   d.NombreCategoria,
   CASE 
     WHEN d.PrecioPromocion = 0 THEN '0%'
-    WHEN d.PrecioDetal = 0 THEN '0%'
-    WHEN d.PrecioPromocion = d.PrecioDetal THEN '0%'
-    ELSE CONCAT(CAST(ROUND((1.0 - (d.PrecioPromocion/NULLIF(d.PrecioDetal,0))) * 100, 0) AS INT), '%')
-  END AS Descuento,
-  
-  -- Asignación de encargado
+    WHEN d.PrecioDetal      = 0 THEN '0%'
+    WHEN d.PrecioPromocion  = d.PrecioDetal THEN '0%'
+    ELSE CONCAT(
+      CAST(ROUND((1.0 - (d.PrecioPromocion/NULLIF(d.PrecioDetal,0))) * 100, 0) AS INT),
+      '%'
+    )
+  END                            AS Descuento,
   CASE 
-    WHEN d.NombreSubLinea IN ('PANTYS','BRASSIER','BOXER / INTERIOR','PIJAMA','PIJAMAS','ROPA EXTERIOR','ROPA DEPORTIVA','ROPA DE PLAYA','LENCERIA','FAJAS','CALCETERÍA','ARTICULOS DE SERVICIO','ACCESORIOS') THEN 'Raul'
-    WHEN d.NombreSubLinea IN ('COSM TICOS','BISUTERIA - JOYERIA','HIGIENE - CUIDADO PERSONAL','MAQUILLAJE','BISUTERIA- CABELLO','U AS','BOLSAS DE REGALO') THEN 'Jesenia'
-    WHEN d.NombreSubLinea IN ('CALZADOS','BOLSOS','HOGAR','TEXTILES HOGAR','GORRAS / PASAMONTA AS0','LENTES','ESCOLAR','PAPELERIA ESCOLAR','BALONES') THEN 'Dairo'
+    WHEN d.NombreSubLinea IN (
+      'PANTYS','BRASSIER','BOXER / INTERIOR','PIJAMA','PIJAMAS',
+      'ROPA EXTERIOR','ROPA DEPORTIVA','ROPA DE PLAYA','LENCERIA',
+      'FAJAS','CALCETERÍA','ARTICULOS DE SERVICIO','ACCESORIOS'
+    ) THEN 'Raul'
+    WHEN d.NombreSubLinea IN (
+      'COSM TICOS','BISUTERIA - JOYERIA','HIGIENE - CUIDADO PERSONAL',
+      'MAQUILLAJE','BISUTERIA- CABELLO','U AS','BOLSAS DE REGALO'
+    ) THEN 'Jesenia'
+    WHEN d.NombreSubLinea IN (
+      'CALZADOS','BOLSOS','HOGAR','TEXTILES HOGAR','GORRAS / PASAMONTA AS0',
+      'LENTES','ESCOLAR','PAPELERIA ESCOLAR','BALONES'
+    ) THEN 'Dairo'
     ELSE 'Sin encargado'
-  END AS Encargado,
-  
+  END                            AS Encargado,
   d.Region,
   d.NombreTienda,
-  d.Existencia AS Existencia_Total,
+  d.Existencia                   AS Existencia_Total,
   d.Promocion,
-  
-  SUM(CASE WHEN d.Region LIKE '%Casa Matriz' THEN d.Existencia ELSE 0 END) OVER (PARTITION BY d.Referencia, d.CodigoMarca) AS Existencia_Total_CasaMatriz,
-  SUM(CASE WHEN d.Region LIKE '%Sucursales' THEN d.Existencia ELSE 0 END) OVER (PARTITION BY d.Referencia, d.CodigoMarca) AS Existencia_Total_Sucursales
-
+  d.Status,
+  SUM(
+    CASE WHEN d.Region LIKE '%Casa Matriz' THEN d.Existencia ELSE 0 END
+  ) OVER (
+    PARTITION BY d.Referencia, d.CodigoMarca
+  )                             AS Existencia_Total_CasaMatriz,
+  SUM(
+    CASE WHEN d.Region LIKE '%Sucursales' THEN d.Existencia ELSE 0 END
+  ) OVER (
+    PARTITION BY d.Referencia, d.CodigoMarca
+  )                             AS Existencia_Total_Sucursales
 FROM InvPorTienda d
-INNER JOIN ReferenciasConPositivo p
-  ON p.Referencia = d.Referencia AND p.CodigoMarca = d.CodigoMarca
+JOIN ReferenciasConPositivo p
+  ON p.Referencia   = d.Referencia
+ AND p.CodigoMarca  = d.CodigoMarca
 ORDER BY d.Referencia;
+
 
 """
 
