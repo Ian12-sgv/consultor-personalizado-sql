@@ -1,131 +1,117 @@
 import pandas as pd
-import customtkinter as ctk
-from sqlalchemy import create_engine, text
-from urllib.parse import quote_plus
-from tkinter import messagebox
-from utils.my_sql_detector import load_history
+import tkinter as tk
+from tkinter import filedialog, ttk
+from tabulate import tabulate
 
-class InstanciaSQLModal(ctk.CTkToplevel):
-    """
-    Modal para capturar conexión a SQL Server dinámicamente,
-    con historial, prellenado y botón Conectar.
-    """
-    def __init__(self, master, callback, instancia_default="", base_default="", usuario_default="", password_default=""):
-        super().__init__(master)
-        self.callback = callback
-        self.title("Conexión a SQL Server")
-        self.geometry("400x400")
-        self.resizable(False, False)
+def detectar_fila_encabezado(df_raw):
+    print("🔍 Buscando fila de encabezado...")
+    for i, fila in df_raw.iterrows():
+        fila_str = fila.astype(str).str.strip().str.lower()
+        if any("concatenar" in celda for celda in fila_str) and any("descuento" in celda for celda in fila_str):
+            print(f"✅ Encabezado encontrado en fila {i + 1}")
+            return i
+    print("❌ No se encontró fila con encabezados esperados.")
+    return None
 
-        # Historial de instancias
-        historial = load_history()
-        instancia_values = []
+def seleccionar_fila_gui(df_preview):
+    selector = tk.Toplevel()
+    selector.title("Seleccionar fila de encabezado")
+    selector.geometry("450x130")
+    selector.attributes("-topmost", True)
 
-        for item in historial:
-            if isinstance(item, dict) and 'instance' in item:
-                instancia_values.append(item['instance'])
-            elif isinstance(item, str):
-                instancia_values.append(item)
+    tk.Label(selector, text="Selecciona manualmente la fila donde están los encabezados:").pack(padx=10, pady=5)
 
-        if not instancia_values:
-            instancia_values = [instancia_default] if instancia_default else ["SERVERSQL\\SQL"]
+    fila_var = tk.StringVar()
+    opciones = [str(i + 1) for i in df_preview.index[:50]]
+    combo = ttk.Combobox(selector, textvariable=fila_var, values=opciones, state="readonly", width=10)
+    combo.pack(padx=10, pady=5)
+    combo.current(0)
 
-        # Widgets UI
-        ctk.CTkLabel(self, text="Instancia SQL Server:").pack(pady=5)
-        self.instancia_entry = ctk.CTkComboBox(self, values=instancia_values)
-        self.instancia_entry.set(instancia_default or instancia_values[0])
-        self.instancia_entry.pack(pady=5)
+    def confirmar():
+        selector.selected_row = int(fila_var.get()) - 1
+        selector.destroy()
 
-        ctk.CTkLabel(self, text="Base de Datos:").pack(pady=5)
-        self.base_entry = ctk.CTkEntry(self)
-        self.base_entry.insert(0, base_default)
-        self.base_entry.pack(pady=5)
+    tk.Button(selector, text="Aceptar", command=confirmar).pack(pady=10)
+    selector.grab_set()
+    selector.wait_window()
 
-        ctk.CTkLabel(self, text="Usuario:").pack(pady=5)
-        self.usuario_entry = ctk.CTkEntry(self)
-        self.usuario_entry.insert(0, usuario_default)
-        self.usuario_entry.pack(pady=5)
+    return getattr(selector, "selected_row", None)
 
-        ctk.CTkLabel(self, text="Contraseña:").pack(pady=5)
-        self.password_entry = ctk.CTkEntry(self, show="*")
-        self.password_entry.insert(0, password_default)
-        self.password_entry.pack(pady=5)
+def seleccionar_hoja_gui(hojas):
+    selector = tk.Toplevel()
+    selector.title("Seleccionar hoja")
+    selector.geometry("400x130")
+    selector.attributes("-topmost", True)
 
-        # Botón conectar
-        self.button_conectar = ctk.CTkButton(self, text="Conectar", command=self.enviar_datos)
-        self.button_conectar.pack(pady=15)
+    tk.Label(selector, text="Selecciona una hoja:").pack(padx=10, pady=5)
 
-    def enviar_datos(self):
-        instancia = self.instancia_entry.get().strip()
-        base = self.base_entry.get().strip()
-        usuario = self.usuario_entry.get().strip()
-        password = self.password_entry.get().strip()
+    hoja_var = tk.StringVar()
+    combo = ttk.Combobox(selector, textvariable=hoja_var, values=hojas, state="readonly", width=50)
+    combo.pack(padx=10, pady=5)
+    combo.current(0)
 
-        if not instancia or not base or not usuario or not password:
-            messagebox.showerror("Error", "Todos los campos son obligatorios.")
-            return
+    def confirmar():
+        selector.selected_sheet = hoja_var.get()
+        selector.destroy()
 
-        self.callback(instancia, base, usuario, password)
-        self.destroy()
+    tk.Button(selector, text="Aceptar", command=confirmar).pack(pady=10)
+    selector.grab_set()
+    selector.wait_window()
 
+    return getattr(selector, "selected_sheet", None)
 
-def cargar_excel_a_sql_dinamico(file_path, instancia, base, usuario, password, tabla_destino):
-    """
-    Carga un Excel a SQL Server en una tabla existente, limpiando basura y garantizando calidad de datos.
-    """
+# Iniciar ventana raíz (solo una vez)
+root = tk.Tk()
+root.withdraw()
+
+print("📂 Selecciona un archivo...")
+ruta_archivo = filedialog.askopenfilename(
+    title="Selecciona un archivo Excel",
+    filetypes=[("Archivos Excel", "*.xlsx *.xls")]
+)
+
+if ruta_archivo:
     try:
-        # Leer el Excel completo sin usecols ni skiprows para evitar perder datos
-        df = pd.read_excel(file_path)
+        print(f"\n📁 Archivo seleccionado: {ruta_archivo}")
 
-        # Normalizar nombres de columnas
-        df.columns = df.columns.str.strip().str.upper()
+        # Obtener lista de hojas
+        hojas = pd.ExcelFile(ruta_archivo).sheet_names
+        print("\n🗂 Hojas disponibles:")
+        for hoja in hojas:
+            print(f"- {hoja}")
 
-        # Verificar que estén las columnas necesarias
-        columnas_validas = ["CONCATENAR", "% DESCUENTO"]
-        if not set(columnas_validas).issubset(set(df.columns)):
-            raise ValueError(f"El Excel debe tener las columnas: {columnas_validas}")
+        # Seleccionar hoja desde GUI
+        hoja = seleccionar_hoja_gui(hojas)
 
-        # Renombrar columnas
-        df = df[["CONCATENAR", "% DESCUENTO"]]
-        df.columns = ["Concatenar", "Descuento"]
+        if not hoja:
+            print("❌ No se seleccionó ninguna hoja.")
+            exit()
 
-        # Limpiar datos
-        df["Concatenar"] = df["Concatenar"].astype(str).str.strip()
-        df["Descuento"] = df["Descuento"].apply(lambda x: str(int(x)) if isinstance(x, (int, float)) and not pd.isna(x) else str(x)).str.strip()
+        print(f"\n📝 Hoja seleccionada: {hoja}")
 
-        # Eliminar filas basura o comentarios
-        basura = ["CREACION", "FECHA", "MARGARITA", "VALENCIA", "MARACAIBO", "NAN", ""]
-        df = df[~df["Concatenar"].str.upper().isin(basura)]
+        # Leer primeras 50 filas sin encabezado
+        df_raw = pd.read_excel(ruta_archivo, sheet_name=hoja, header=None, nrows=50)
 
-        # Eliminar filas con valores nulos o vacíos
-        df = df.dropna(subset=["Concatenar", "Descuento"])
-        df = df[df["Concatenar"] != ""]
+        fila_encabezado = detectar_fila_encabezado(df_raw)
 
-        # Eliminar duplicados
-        df = df.drop_duplicates(subset=["Concatenar"])
+        if fila_encabezado is None:
+            print("\n🧐 Vista previa del archivo (primeras 20 filas):")
+            print(tabulate(df_raw.fillna("").astype(str).head(20), headers="keys", tablefmt="pretty"))
+            fila_encabezado = seleccionar_fila_gui(df_raw)
 
-        if df.empty:
-            messagebox.showerror("Error", "El Excel no tiene datos válidos para cargar.")
-            return
+        if fila_encabezado is not None:
+            print(f"\n📊 Leyendo datos definitivos desde fila {fila_encabezado + 1} como encabezado...")
+            df = pd.read_excel(ruta_archivo, sheet_name=hoja, header=fila_encabezado, usecols="A,G")
 
-        # Conexión a SQL Server
-        password_enc = quote_plus(password)
-        conn_str = f"mssql+pyodbc://{usuario}:{password_enc}@{instancia}/{base}?driver=SQL+Server"
-        engine = create_engine(conn_str, fast_executemany=True)
+            print("\n✅ Columnas seleccionadas:")
+            print(df.columns.tolist())
 
-        with engine.begin() as conn:
-            # Vaciar tabla sin eliminar la estructura
-            conn.execute(text(f"TRUNCATE TABLE {tabla_destino};"))
-
-            # Insertar datos
-            data = df.to_dict(orient="records")
-            insert_sql = text(f"""
-                INSERT INTO {tabla_destino} (Concatenar, Descuento)
-                VALUES (:Concatenar, :Descuento)
-            """)
-            conn.execute(insert_sql, data)
-
-        messagebox.showinfo("Éxito", f"Se cargó el Excel a {base}.{tabla_destino}")
-
+            print("\n🔹 Primeras 10 filas:")
+            print(df.head(10))
+        else:
+            print("❌ No se pudo determinar la fila del encabezado.")
     except Exception as e:
-        messagebox.showerror("Error", f"No se pudo cargar el Excel a SQL Server:\n{e}")
+        print("❌ Error al procesar el archivo:")
+        print(str(e))
+else:
+    print("❌ No se seleccionó archivo.")
