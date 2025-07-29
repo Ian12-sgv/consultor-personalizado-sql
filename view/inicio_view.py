@@ -205,6 +205,13 @@ class InicioView(ctk.CTk):
             solo_promo_1=solo_1
         ).copy()
 
+        # Insertar columna Descuento_Catalogo al lado de Descuento si no existe
+        if 'Descuento' in df_view.columns:
+            idx = df_view.columns.get_loc('Descuento')
+            if 'Descuento_Catalogo' not in df_view.columns:
+                # Por ejemplo, puedes asignar una columna vacía o con datos reales si tienes
+                df_view.insert(idx + 1, 'Descuento_Catalogo', '') 
+
         if 'Promocion' in df_view.columns:
             serie = df_view['Promocion']
             df_view['Promocion'] = (
