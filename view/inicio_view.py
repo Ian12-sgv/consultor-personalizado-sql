@@ -125,12 +125,13 @@ class InicioView(ctk.CTk):
 
         boton_frame = ctk.CTkFrame(self)
         boton_frame.grid(row=1, column=0, padx=10, pady=5, sticky="ew")
-        boton_frame.grid_columnconfigure((0,1,2,3), weight=1, uniform="btns")
+        boton_frame.grid_columnconfigure((0,1,2,3,4), weight=1, uniform="btns")
 
         Button(boton_frame, text="Importar Datos", command=self.importar_datos, fg_color="#3498db", hover_color="#2980b9", row=0, column=0)
         Button(boton_frame, text="Exportar a Excel", command=self.exportar_excel, fg_color="#27ae60", hover_color="#2ecc71", row=0, column=1)
         Button(boton_frame, text="Exportar PDF", command=self._open_pdf_selector, fg_color="#e67e22", hover_color="#d35400", row=0, column=2)
         Button(boton_frame, text="Importar Excel", command=self.importar_excel, fg_color="#9b59b6", hover_color="#8e44ad", row=0, column=3)
+        Button(boton_frame, text="Importar Catálogo Desc.", command=self.importar_catalogo_descuento, fg_color="#8e44ad", hover_color="#732d91", row=0, column=4)
 
         self.tree = ttk.Treeview(self, show="headings")
         self.tree.grid(row=3, column=0, padx=10, pady=10, sticky="nsew")
@@ -172,6 +173,49 @@ class InicioView(ctk.CTk):
             messagebox.showinfo("Importación", "Excel importado correctamente.")
         except Exception as e:
             messagebox.showerror("Error al importar Excel", str(e))
+
+    def importar_catalogo_descuento(self):
+        df_catalogo = run_excelPy()
+        if df_catalogo is None:
+            messagebox.showwarning("Importación cancelada", "No se importó catálogo de descuentos.")
+            return
+
+        # Extraer columna A (índice 0)
+        col_0 = df_catalogo.iloc[:, 0]
+
+        # Extraer columna G (índice 6) si existe, sino crear vacía
+        if df_catalogo.shape[1] > 6:
+            col_6 = df_catalogo.iloc[:, 6]
+        else:
+            col_6 = pd.Series([""] * len(df_catalogo))
+
+        df_catalogo_subset = pd.DataFrame({
+            'Concatenar': col_0,
+            '% Descuento': col_6
+        })
+
+        if self.df_actual is None or self.df_actual.empty:
+            messagebox.showwarning("Sin datos", "Primero importa o filtra datos para cruzar con el catálogo.")
+            return
+
+        if 'Descuento_Catalogo' not in self.df_actual.columns:
+            self.df_actual['Descuento_Catalogo'] = ""
+
+        df_merged = self.df_actual.merge(
+            df_catalogo_subset,
+            how='left',
+            on='Concatenar'
+        )
+
+        df_merged['Descuento_Catalogo'] = df_merged['% Descuento'].fillna("No coincide")
+        df_merged.drop(columns=['% Descuento'], inplace=True)
+
+        self.df_actual = df_merged
+
+        # Actualizar la vista
+        for item in self.tree.get_children():
+            self.tree.delete(item)
+        render_tree(self.tree, self.df_actual)
 
     def _update_view(self):
         if self.df_original is None:

@@ -11,4 +11,4 @@ class BotonesPanel(ctk.CTkFrame):
         Button(self, text="Importar Datos", command=self.callbacks.get("importar_datos")).grid(row=0, column=0)
         Button(self, text="Exportar a Excel", command=self.callbacks.get("exportar_excel")).grid(row=0, column=1)
         Button(self, text="Exportar PDF", command=self.callbacks.get("exportar_pdf")).grid(row=0, column=2)
-        Button(self, text="Importar Excel", command=self.callbacks.get("importar_excel")).grid(row=0, column=3)
+        Button(self, text="Importar Catálogo Desc", command=self.callbacks.get("importar_excel")).grid(row=0, column=3)
