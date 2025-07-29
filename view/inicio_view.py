@@ -1,4 +1,7 @@
-# inicio_view.py
+import sys
+import os
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+
 import customtkinter as ctk
 from tkinter import ttk, messagebox
 from tkinter.filedialog import askopenfilename
@@ -7,11 +10,13 @@ import pandas as pd
 from Style.styleInicioView import configure_ctk_style, configure_treeview_style
 from components.query import INVENTORY_SQL
 from components.exporter import exportar_dataframe_a_excel, export_pdfs_por_sucursal
+from components.services.pivot_service import PivotService
+from components.services.filter_service import apply_filters
+
+# UI modularizados
 from components.ui.placeholder_combo import PlaceholderCombo
 from components.ui.debounce import Debouncer
 from components.ui.treeview_renderer import render as render_tree
-from components.services.pivot_service import PivotService
-from components.services.filter_service import apply_filters
 from components.ui.button import Button
 
 PLACEHOLDER_REGION     = "Región"
@@ -24,7 +29,7 @@ class InicioView(ctk.CTk):
         self.engine = engine
         self.config_sql = config_sql
         self.df_original = None
-        self.df_actual   = None
+        self.df_actual = None
         self.pivot_service = PivotService()
         self.filter_mode = None  # 'unique', 'dup', or None
 
@@ -33,111 +38,99 @@ class InicioView(ctk.CTk):
         configure_ctk_style()
         self.grid_rowconfigure(3, weight=1)
         self.grid_columnconfigure(0, weight=1)
+
         self._build_ui()
         self._style_treeview()
 
     def _build_ui(self):
-        # Filtros
         filtro_frame = ctk.CTkFrame(self)
         filtro_frame.grid(row=0, column=0, padx=10, pady=10, sticky="ew")
         filtro_frame.grid_columnconfigure((0,1), weight=1)
 
-        # Pivot selector
         self.pivot_selector = ctk.CTkComboBox(
             filtro_frame,
-            values=["Todo","Solo Sucursales","Solo Casa Matriz"],
+            values=["Todo", "Solo Sucursales", "Solo Casa Matriz"],
             command=lambda _: self._update_view()
         )
         self.pivot_selector.set("Todo")
         self.pivot_selector.grid(row=0, column=0, padx=10, pady=5, sticky="ew")
 
-        # Región selector
         self.region_selector = PlaceholderCombo(
-            filtro_frame, placeholder=PLACEHOLDER_REGION,
+            filtro_frame,
+            placeholder=PLACEHOLDER_REGION,
             values=["Todas"], state="disabled",
             command=lambda _: self._update_view()
         )
         self.region_selector.grid(row=0, column=1, padx=10, pady=5, sticky="ew")
 
-        # Referencia
         self.referencia_entry = PlaceholderCombo(
-            filtro_frame, placeholder=PLACEHOLDER_REFERENCIA,
+            filtro_frame,
+            placeholder=PLACEHOLDER_REFERENCIA,
             values=[""], state="normal",
             command=lambda _: self._update_view()
         )
         self.referencia_entry.grid(row=1, column=0, columnspan=2, padx=10, pady=5, sticky="ew")
         self._debounce_ref = Debouncer(self, delay_ms=300)
-        self.referencia_entry.bind(
-            "<KeyRelease>", lambda e: self._debounce_ref.call(self._update_view)
-        )
+        self.referencia_entry.bind("<KeyRelease>", lambda e: self._debounce_ref.call(self._update_view))
 
-        # Excluir marcas
         self.exclude_entry = ctk.CTkEntry(
-            filtro_frame, placeholder_text=PLACEHOLDER_EXCLUDE, width=200
+            filtro_frame,
+            placeholder_text=PLACEHOLDER_EXCLUDE,
+            width=200
         )
         self.exclude_entry.grid(row=2, column=0, columnspan=2, padx=10, pady=5, sticky="ew")
         self.exclude_entry.bind("<Return>", lambda e: self._update_view())
 
-        # Checkboxes
         self.promo_var = ctk.BooleanVar(value=False)
         ctk.CTkCheckBox(
-            filtro_frame, text="Solo Promoción = 1",
-            variable=self.promo_var, command=self._update_view
+            filtro_frame,
+            text="Solo Promoción = 1",
+            variable=self.promo_var,
+            command=self._update_view
         ).grid(row=3, column=0, columnspan=2, padx=10, pady=5, sticky="w")
 
         self.desc_dup_var = ctk.BooleanVar(value=False)
         ctk.CTkCheckBox(
-            filtro_frame, text="Resaltar Descuento Duplicados",
-            variable=self.desc_dup_var, command=self._update_view
+            filtro_frame,
+            text="Resaltar Descuento Duplicados",
+            variable=self.desc_dup_var,
+            command=self._update_view
         ).grid(row=4, column=0, columnspan=2, padx=10, pady=5, sticky="w")
 
-        # Botones reactivos duplicados
         self.btn_unique = Button(
-            filtro_frame, text="Solo no duplicados",
+            filtro_frame,
+            text="Solo no duplicados",
             command=lambda: self._set_filter_mode('unique'),
-            fg_color="#27ae60", hover_color="#2ecc71",
-            row=5, column=0, padx=10, pady=5
+            fg_color="#27ae60",
+            hover_color="#2ecc71",
+            row=5,
+            column=0,
+            padx=10,
+            pady=5
         )
         self.btn_dup = Button(
-            filtro_frame, text="Solo duplicados",
+            filtro_frame,
+            text="Solo duplicados",
             command=lambda: self._set_filter_mode('dup'),
-            fg_color="#e74c3c", hover_color="#c0392b",
-            row=5, column=1, padx=10, pady=5
+            fg_color="#e74c3c",
+            hover_color="#c0392b",
+            row=5,
+            column=1,
+            padx=10,
+            pady=5
         )
         self.btn_unique.grid_remove()
         self.btn_dup.grid_remove()
 
-        # Botones generales con colores distintos
         boton_frame = ctk.CTkFrame(self)
         boton_frame.grid(row=1, column=0, padx=10, pady=5, sticky="ew")
         boton_frame.grid_columnconfigure((0,1,2,3), weight=1, uniform="btns")
 
-        Button(
-            boton_frame, text="Importar Datos",
-            command=self.importar_datos,
-            fg_color="#3498db", hover_color="#2980b9",
-            row=0, column=0
-        )
-        Button(
-            boton_frame, text="Exportar a Excel",
-            command=self.exportar_excel,
-            fg_color="#27ae60", hover_color="#2ecc71",
-            row=0, column=1
-        )
-        Button(
-            boton_frame, text="Exportar PDF",
-            command=self._open_pdf_selector,
-            fg_color="#e67e22", hover_color="#d35400",
-            row=0, column=2
-        )
-        Button(
-            boton_frame, text="Importar Excel",
-            command=self.importar_excel,
-            fg_color="#9b59b6", hover_color="#8e44ad",
-            row=0, column=3
-        )
+        Button(boton_frame, text="Importar Datos", command=self.importar_datos, fg_color="#3498db", hover_color="#2980b9", row=0, column=0)
+        Button(boton_frame, text="Exportar a Excel", command=self.exportar_excel, fg_color="#27ae60", hover_color="#2ecc71", row=0, column=1)
+        Button(boton_frame, text="Exportar PDF", command=self._open_pdf_selector, fg_color="#e67e22", hover_color="#d35400", row=0, column=2)
+        Button(boton_frame, text="Importar Excel", command=self.importar_excel, fg_color="#9b59b6", hover_color="#8e44ad", row=0, column=3)
 
-        # Treeview
         self.tree = ttk.Treeview(self, show="headings")
         self.tree.grid(row=3, column=0, padx=10, pady=10, sticky="nsew")
         self.scroll_x = ttk.Scrollbar(self, orient="horizontal", command=self.tree.xview)
@@ -160,10 +153,7 @@ class InicioView(ctk.CTk):
             messagebox.showerror("Error al importar datos", str(e))
 
     def importar_excel(self):
-        file_path = askopenfilename(
-            title="Seleccionar archivo Excel",
-            filetypes=[("Archivos Excel", "*.xlsx *.xls")]
-        )
+        file_path = askopenfilename(title="Seleccionar archivo Excel", filetypes=[("Archivos Excel", "*.xlsx *.xls")])
         if not file_path:
             return
         try:
@@ -183,7 +173,7 @@ class InicioView(ctk.CTk):
     def _update_view(self):
         if self.df_original is None:
             return
-        # Mostrar/ocultar botones duplicados
+
         if self.desc_dup_var.get():
             self.btn_unique.grid()
             self.btn_dup.grid()
@@ -192,7 +182,6 @@ class InicioView(ctk.CTk):
             self.btn_dup.grid_remove()
             self.filter_mode = None
 
-        # Pivot
         opc = self.pivot_selector.get()
         df_base = self.df_original
         if opc == "Solo Sucursales":
@@ -201,54 +190,47 @@ class InicioView(ctk.CTk):
             df_base = df_base[df_base['Region'].str.contains('Casa Matatriz', na=False)]
         pivot_df = self.pivot_service.get_pivot(opc, df_base)
 
-        # Valores de filtros
         region = self.region_selector.get_value()
         referencia = self.referencia_entry.get_value()
         exclude_list = [m.strip() for m in self.exclude_entry.get().split(',') if m.strip()]
         solo_1 = self.promo_var.get()
 
-        # Filtros básicos
         df_view = apply_filters(
-            pivot_df, opc, region, '', referencia
-        )
+            pivot_df,
+            opc,
+            region,
+            marca='',
+            referencia=referencia,
+            exclude_marcas=exclude_list,
+            solo_promo_1=solo_1
+        ).copy()
 
-        # Excluir marcas
-        if exclude_list and 'Marca' in df_view.columns:
-            df_view = df_view[~df_view['Marca'].isin(exclude_list)]
-
-        # Filtro promocion
-        if solo_1 and 'Promocion' in df_view.columns:
-            df_view = df_view[df_view['Promocion'] == 1]
-
-        # Normalizar Promocion
         if 'Promocion' in df_view.columns:
+            serie = df_view['Promocion']
             df_view['Promocion'] = (
-                df_view['Promocion']
-                    .map({True:1,False:0,'True':1,'False':0,'true':1,'false':0,'1':1,'0':0})
-                    .fillna(df_view['Promocion'])
-                    .astype(int, errors='ignore')
+                serie.map({True:1, False:0, 'True':1, 'False':0,
+                           'true':1, 'false':0, '1':1, '0':0})
+                     .fillna(serie)
+                     .astype(int, errors='ignore')
             )
 
-        # Insertar Descuento catálogo
-        if 'Descuento' in df_view.columns:
-            idx = df_view.columns.get_loc('Descuento')
-            if 'Descuento catálogo' not in df_view.columns:
-                df_view.insert(idx+1, 'Descuento catálogo', df_view['Descuento'])
-
-        # Duplicados
         if self.desc_dup_var.get() and 'Concatenar' in df_view.columns and 'Descuento' in df_view.columns:
-            df_view['_dup_desc'] = df_view.duplicated(subset=['Concatenar','Descuento'], keep=False)
+            df_view['_dup_desc'] = df_view.duplicated(subset=['Concatenar', 'Descuento'], keep=False)
         else:
             df_view['_dup_desc'] = False
 
-        # Unique/dup filter
         if self.filter_mode == 'unique':
             df_view = df_view[~df_view['_dup_desc']]
         elif self.filter_mode == 'dup':
             df_view = df_view[df_view['_dup_desc']]
 
         self.df_actual = df_view.copy()
+
+        for item in self.tree.get_children():
+            self.tree.delete(item)
+
         render_tree(self.tree, df_view)
+
         if self.desc_dup_var.get():
             self._highlight_desc_duplicados()
         else:
@@ -271,9 +253,9 @@ class InicioView(ctk.CTk):
             messagebox.showwarning("Sin datos", "Primero importa o filtra datos.")
             return
         cols = [c for c in self.df_actual.columns if c not in
-                ['Concatenar','Sucursal_Total','Casa_matriz_Total',
-                 'Total_Existencia','Porcentaje_Existencia_CasaMatriz',
-                 'Porcentaje\_Existencia_Sucursales']]
+                ['Concatenar', 'Sucursal_Total', 'Casa_matriz_Total',
+                 'Total_Existencia', 'Porcentaje_Existencia_CasaMatriz',
+                 'Porcentaje_Existencia_Sucursales']]
         if not cols:
             messagebox.showinfo("Sin sucursales", "No hay columnas de sucursales para exportar.")
             return
@@ -290,13 +272,15 @@ class InicioView(ctk.CTk):
             chk.pack(anchor='w', pady=2)
             vars_chk[c] = var
         btn_frame = ctk.CTkFrame(modal)
-        btn_frame.pack(fill='x', padx=10, pady=(0,10))
-        Button(btn_frame, text="Cancelar", command=modal.destroy).grid(row=0, column=1, padx=(0,5), pady=5)
+        btn_frame.pack(fill='x', padx=10, pady=(0, 10))
+        Button(btn_frame, text="Cancelar", command=modal.destroy).grid(row=0, column=1, padx=(0, 5), pady=5)
+
         def _confirm():
-            sel = [s for s,v in vars_chk.items() if v.get()]
+            sel = [s for s, v in vars_chk.items() if v.get()]
             modal.destroy()
             if sel:
                 self._exportar_pdfs_por_sucursal(sel)
+
         Button(btn_frame, text="Aceptar", command=_confirm).grid(row=0, column=2, padx=5, pady=5)
 
     def _exportar_pdfs_por_sucursal(self, sucursales):
