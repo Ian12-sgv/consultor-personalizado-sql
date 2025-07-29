@@ -1,7 +1,9 @@
+# inicio_view.py
 import customtkinter as ctk
 from tkinter import ttk, messagebox
 import pandas as pd
 
+from Style.styleInicioView import configure_ctk_style, configure_treeview_style
 from components.query import INVENTORY_SQL
 from components.exporter import exportar_dataframe_a_excel, export_pdfs_por_sucursal
 from components.ui.placeholder_combo import PlaceholderCombo
@@ -30,8 +32,8 @@ class InicioView(ctk.CTk):
         self.title("Inicio - Importación de Datos")
         self.geometry("1100x700")
 
-        ctk.set_appearance_mode("dark")
-        ctk.set_default_color_theme("blue")
+        # Configurar estilos de UI
+        configure_ctk_style()
 
         self.grid_rowconfigure(3, weight=1)
         self.grid_columnconfigure(0, weight=1)
@@ -176,7 +178,7 @@ class InicioView(ctk.CTk):
             pivot_df,
             opc,
             region,
-            '',  # código de marca removido
+            '',
             referencia,
             exclude_marcas=exclude_list,
             solo_promo_1=solo_1
@@ -208,7 +210,7 @@ class InicioView(ctk.CTk):
             for iid in self.tree.get_children(): self.tree.item(iid, tags=())
 
     def _set_filter_mode(self, mode):
-        self.filter_mode = None if self.filter_mode==mode else mode
+        self.filter_mode = None if self.filter_mode == mode else mode
         self._update_view()
 
     def _highlight_desc_duplicados(self):
@@ -247,13 +249,11 @@ class InicioView(ctk.CTk):
             if sel: self._exportar_pdfs_por_sucursal(sel)
         ctk.CTkButton(btn_frame, text="Aceptar", fg_color="#2ecc71", hover_color="#27ae60", command=_confirm).pack(side='right')
 
+    def _exportar_pdfs_por_sucursal(self, sucursales):
+        export_pdfs_por_sucursal(self.df_actual, sucursales)
+
     def exportar_excel(self):
         exportar_dataframe_a_excel(self.df_actual)
 
     def _style_treeview(self):
-        style = ttk.Style()
-        style.theme_use("default")
-        style.configure("Treeview.Heading", font=("Segoe UI",10,"bold"), foreground="#ffffff", background="#1f6aa5")
-        style.map("Treeview.Heading", background=[("active","#18527d")])
-        style.configure("Treeview", font=("Segoe UI",10), rowheight=22, background="#1e1e1e", fieldbackground="#1e1e1e", foreground="#e5e5e5")
-        style.map("Treeview", background=[("selected","#1f6aa5")], foreground=[("selected","white")])
+        configure_treeview_style()

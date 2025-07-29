@@ -3,6 +3,12 @@ import tkinter as tk
 from tkinter import filedialog, ttk
 from tabulate import tabulate
 
+# Mostrar todo el contenido sin truncar
+pd.set_option('display.max_rows', None)
+pd.set_option('display.max_columns', None)
+pd.set_option('display.width', 1000)
+pd.set_option('display.max_colwidth', None)
+
 def detectar_fila_encabezado(df_raw):
     print("🔍 Buscando fila de encabezado...")
     for i, fila in df_raw.iterrows():
@@ -101,13 +107,23 @@ if ruta_archivo:
 
         if fila_encabezado is not None:
             print(f"\n📊 Leyendo datos definitivos desde fila {fila_encabezado + 1} como encabezado...")
-            df = pd.read_excel(ruta_archivo, sheet_name=hoja, header=fila_encabezado, usecols="A,G")
+            df_full = pd.read_excel(ruta_archivo, sheet_name=hoja, header=fila_encabezado)
+
+            print("\n🧪 Encabezados detectados:")
+            print(df_full.columns.tolist())
+
+            columnas_esperadas = [col for col in df_full.columns if "concatenar" in str(col).lower() or "descuento" in str(col).lower()]
+            if len(columnas_esperadas) >= 2:
+                df = df_full[columnas_esperadas[:2]]
+            else:
+                print("\n⚠️ No se encontraron columnas esperadas. Se usarán columnas A y G por posición.")
+                df = df_full.iloc[:, [0, 6]]
 
             print("\n✅ Columnas seleccionadas:")
             print(df.columns.tolist())
 
-            print("\n🔹 Primeras 10 filas:")
-            print(df.head(10))
+            print(f"\n🔹 Mostrando todas las filas ({len(df)}):")
+            print(df.to_string(index=False))
         else:
             print("❌ No se pudo determinar la fila del encabezado.")
     except Exception as e:
