@@ -1,133 +1,121 @@
+# excelPy.py modificado para integración
+
 import pandas as pd
-import tkinter as tk
-from tkinter import filedialog, ttk
+import customtkinter as ctk
+from tkinter import filedialog
 from tabulate import tabulate
 
-# Mostrar todo el contenido sin truncar
 pd.set_option('display.max_rows', None)
 pd.set_option('display.max_columns', None)
 pd.set_option('display.width', 1000)
 pd.set_option('display.max_colwidth', None)
 
+ctk.set_appearance_mode("System")
+ctk.set_default_color_theme("blue")
+
 def detectar_fila_encabezado(df_raw):
-    print("🔍 Buscando fila de encabezado...")
     for i, fila in df_raw.iterrows():
         fila_str = fila.astype(str).str.strip().str.lower()
         if any("concatenar" in celda for celda in fila_str) and any("descuento" in celda for celda in fila_str):
-            print(f"✅ Encabezado encontrado en fila {i + 1}")
             return i
-    print("❌ No se encontró fila con encabezados esperados.")
     return None
 
 def seleccionar_fila_gui(df_preview):
-    selector = tk.Toplevel()
+    selector = ctk.CTkToplevel()
     selector.title("Seleccionar fila de encabezado")
     selector.geometry("450x130")
     selector.attributes("-topmost", True)
 
-    tk.Label(selector, text="Selecciona manualmente la fila donde están los encabezados:").pack(padx=10, pady=5)
+    label = ctk.CTkLabel(selector, text="Selecciona manualmente la fila donde están los encabezados:")
+    label.pack(padx=10, pady=5)
 
-    fila_var = tk.StringVar()
+    fila_var = ctk.StringVar()
     opciones = [str(i + 1) for i in df_preview.index[:50]]
-    combo = ttk.Combobox(selector, textvariable=fila_var, values=opciones, state="readonly", width=10)
+    combo = ctk.CTkComboBox(selector, values=opciones, variable=fila_var, width=100)
     combo.pack(padx=10, pady=5)
-    combo.current(0)
+    combo.set(opciones[0])
 
     def confirmar():
         selector.selected_row = int(fila_var.get()) - 1
         selector.destroy()
 
-    tk.Button(selector, text="Aceptar", command=confirmar).pack(pady=10)
+    btn_aceptar = ctk.CTkButton(selector, text="Aceptar", command=confirmar)
+    btn_aceptar.pack(pady=10)
+
     selector.grab_set()
     selector.wait_window()
 
     return getattr(selector, "selected_row", None)
 
 def seleccionar_hoja_gui(hojas):
-    selector = tk.Toplevel()
+    selector = ctk.CTkToplevel()
     selector.title("Seleccionar hoja")
     selector.geometry("400x130")
     selector.attributes("-topmost", True)
 
-    tk.Label(selector, text="Selecciona una hoja:").pack(padx=10, pady=5)
+    label = ctk.CTkLabel(selector, text="Selecciona una hoja:")
+    label.pack(padx=10, pady=5)
 
-    hoja_var = tk.StringVar()
-    combo = ttk.Combobox(selector, textvariable=hoja_var, values=hojas, state="readonly", width=50)
+    hoja_var = ctk.StringVar()
+    combo = ctk.CTkComboBox(selector, values=hojas, variable=hoja_var, width=300)
     combo.pack(padx=10, pady=5)
-    combo.current(0)
+    combo.set(hojas[0])
 
     def confirmar():
         selector.selected_sheet = hoja_var.get()
         selector.destroy()
 
-    tk.Button(selector, text="Aceptar", command=confirmar).pack(pady=10)
+    btn_aceptar = ctk.CTkButton(selector, text="Aceptar", command=confirmar)
+    btn_aceptar.pack(pady=10)
+
     selector.grab_set()
     selector.wait_window()
 
     return getattr(selector, "selected_sheet", None)
 
-# Iniciar ventana raíz (solo una vez)
-root = tk.Tk()
-root.withdraw()
+def run_excelPy():
+    root = ctk.CTk()
+    root.withdraw()
 
-print("📂 Selecciona un archivo...")
-ruta_archivo = filedialog.askopenfilename(
-    title="Selecciona un archivo Excel",
-    filetypes=[("Archivos Excel", "*.xlsx *.xls")]
-)
+    ruta_archivo = filedialog.askopenfilename(
+        title="Selecciona un archivo Excel",
+        filetypes=[("Archivos Excel", "*.xlsx *.xls")]
+    )
+    if not ruta_archivo:
+        root.destroy()
+        return None
 
-if ruta_archivo:
     try:
-        print(f"\n📁 Archivo seleccionado: {ruta_archivo}")
-
-        # Obtener lista de hojas
         hojas = pd.ExcelFile(ruta_archivo).sheet_names
-        print("\n🗂 Hojas disponibles:")
-        for hoja in hojas:
-            print(f"- {hoja}")
-
-        # Seleccionar hoja desde GUI
         hoja = seleccionar_hoja_gui(hojas)
-
         if not hoja:
-            print("❌ No se seleccionó ninguna hoja.")
-            exit()
+            root.destroy()
+            return None
 
-        print(f"\n📝 Hoja seleccionada: {hoja}")
-
-        # Leer primeras 50 filas sin encabezado
         df_raw = pd.read_excel(ruta_archivo, sheet_name=hoja, header=None, nrows=50)
-
         fila_encabezado = detectar_fila_encabezado(df_raw)
-
         if fila_encabezado is None:
-            print("\n🧐 Vista previa del archivo (primeras 20 filas):")
-            print(tabulate(df_raw.fillna("").astype(str).head(20), headers="keys", tablefmt="pretty"))
             fila_encabezado = seleccionar_fila_gui(df_raw)
 
         if fila_encabezado is not None:
-            print(f"\n📊 Leyendo datos definitivos desde fila {fila_encabezado + 1} como encabezado...")
             df_full = pd.read_excel(ruta_archivo, sheet_name=hoja, header=fila_encabezado)
-
-            print("\n🧪 Encabezados detectados:")
-            print(df_full.columns.tolist())
-
             columnas_esperadas = [col for col in df_full.columns if "concatenar" in str(col).lower() or "descuento" in str(col).lower()]
             if len(columnas_esperadas) >= 2:
                 df = df_full[columnas_esperadas[:2]]
             else:
-                print("\n⚠️ No se encontraron columnas esperadas. Se usarán columnas A y G por posición.")
                 df = df_full.iloc[:, [0, 6]]
-
-            print("\n✅ Columnas seleccionadas:")
-            print(df.columns.tolist())
-
-            print(f"\n🔹 Mostrando todas las filas ({len(df)}):")
-            print(df.to_string(index=False))
+            root.destroy()
+            return df
         else:
-            print("❌ No se pudo determinar la fila del encabezado.")
+            root.destroy()
+            return None
     except Exception as e:
-        print("❌ Error al procesar el archivo:")
-        print(str(e))
-else:
-    print("❌ No se seleccionó archivo.")
+        root.destroy()
+        print("Error al procesar el archivo:", e)
+        return None
+
+if __name__ == "__main__":
+    df = run_excelPy()
+    if df is not None:
+        print("Dataframe resultante:")
+        print(df)

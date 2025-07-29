@@ -6,6 +6,7 @@ import customtkinter as ctk
 from tkinter import ttk, messagebox
 from tkinter.filedialog import askopenfilename
 import pandas as pd
+from components.excelPy import run_excelPy
 
 from Style.styleInicioView import configure_ctk_style, configure_treeview_style
 from components.query import INVENTORY_SQL
@@ -153,11 +154,13 @@ class InicioView(ctk.CTk):
             messagebox.showerror("Error al importar datos", str(e))
 
     def importar_excel(self):
-        file_path = askopenfilename(title="Seleccionar archivo Excel", filetypes=[("Archivos Excel", "*.xlsx *.xls")])
-        if not file_path:
+        df = run_excelPy()
+        if df is None:
+            messagebox.showwarning("Importación cancelada", "No se importó ningún archivo.")
             return
+
+        self.df_original = df
         try:
-            self.df_original = pd.read_excel(file_path)
             suc = self.df_original[self.df_original['Region'].str.contains('Sucursales', na=False)]
             regiones = ["Todas"] + sorted(suc['Region'].dropna().unique())
             self.region_selector.reset_placeholder(values=regiones)
@@ -209,8 +212,7 @@ class InicioView(ctk.CTk):
         if 'Descuento' in df_view.columns:
             idx = df_view.columns.get_loc('Descuento')
             if 'Descuento_Catalogo' not in df_view.columns:
-                # Por ejemplo, puedes asignar una columna vacía o con datos reales si tienes
-                df_view.insert(idx + 1, 'Descuento_Catalogo', '') 
+                df_view.insert(idx + 1, 'Descuento_Catalogo', '')
 
         if 'Promocion' in df_view.columns:
             serie = df_view['Promocion']
