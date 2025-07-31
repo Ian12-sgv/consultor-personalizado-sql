@@ -31,8 +31,13 @@ class InicioView(ctk.CTk):
         self.config_sql = config_sql
         self.df_original = None
         self.df_actual = None
+        self.catalogo_descuento = None  # Aquí almacenamos el catálogo
         self.pivot_service = PivotService()
         self.filter_mode = None  # 'unique', 'dup', or None
+
+        # Checkbox para filtrar solo coincidencias y no coincidencias
+        self.filter_solo_coincide = ctk.BooleanVar(value=False)
+        self.filter_solo_no_coincide = ctk.BooleanVar(value=False)
 
         self.title("Inicio - Importación de Datos")
         self.geometry("1100x700")
@@ -123,6 +128,22 @@ class InicioView(ctk.CTk):
         self.btn_unique.grid_remove()
         self.btn_dup.grid_remove()
 
+        # Checkbox para filtrar solo coincidencias en Descuento_Catalogo
+        ctk.CTkCheckBox(
+            filtro_frame,
+            text="Mostrar solo coincidencias",
+            variable=self.filter_solo_coincide,
+            command=self._update_view
+        ).grid(row=6, column=0, columnspan=2, padx=10, pady=5, sticky="w")
+
+        # Checkbox para filtrar solo no coincidencias en Descuento_Catalogo
+        ctk.CTkCheckBox(
+            filtro_frame,
+            text="Mostrar solo no coincidencias",
+            variable=self.filter_solo_no_coincide,
+            command=self._update_view
+        ).grid(row=7, column=0, columnspan=2, padx=10, pady=5, sticky="w")
+
         boton_frame = ctk.CTkFrame(self)
         boton_frame.grid(row=1, column=0, padx=10, pady=5, sticky="ew")
         boton_frame.grid_columnconfigure((0,1,2,3,4), weight=1, uniform="btns")
@@ -180,47 +201,31 @@ class InicioView(ctk.CTk):
             messagebox.showwarning("Importación cancelada", "No se importó catálogo de descuentos.")
             return
 
-        # Extraer columna A (índice 0)
-        col_0 = df_catalogo.iloc[:, 0]
+        # Limpiar espacios en nombres de columnas
+        df_catalogo.columns = df_catalogo.columns.str.strip()
 
-        # Extraer columna G (índice 6) si existe, sino crear vacía
-        if df_catalogo.shape[1] > 6:
-            col_6 = df_catalogo.iloc[:, 6]
-        else:
-            col_6 = pd.Series([""] * len(df_catalogo))
+        # Mostrar columnas y primeras filas para diagnosticar
+        print("Columnas catálogo Excel:", df_catalogo.columns.tolist())
+        print("Primeras filas catálogo:\n", df_catalogo.head(10))
 
-        df_catalogo_subset = pd.DataFrame({
+        col_0 = df_catalogo['Concatenar']
+        col_6 = df_catalogo['% Descuento']
+
+        self.catalogo_descuento = pd.DataFrame({
             'Concatenar': col_0,
-            '% Descuento': col_6
+            'Descuento_Catalogo': col_6
         })
 
-        if self.df_actual is None or self.df_actual.empty:
-            messagebox.showwarning("Sin datos", "Primero importa o filtra datos para cruzar con el catálogo.")
-            return
+        print("Valores únicos en catálogo de descuentos:", self.catalogo_descuento['Descuento_Catalogo'].unique())
 
-        if 'Descuento_Catalogo' not in self.df_actual.columns:
-            self.df_actual['Descuento_Catalogo'] = ""
-
-        df_merged = self.df_actual.merge(
-            df_catalogo_subset,
-            how='left',
-            on='Concatenar'
-        )
-
-        df_merged['Descuento_Catalogo'] = df_merged['% Descuento'].fillna("No coincide")
-        df_merged.drop(columns=['% Descuento'], inplace=True)
-
-        self.df_actual = df_merged
-
-        # Actualizar la vista
-        for item in self.tree.get_children():
-            self.tree.delete(item)
-        render_tree(self.tree, self.df_actual)
+        messagebox.showinfo("Catálogo importado", "Catálogo de descuentos cargado correctamente.")
+        self._update_view()  # refrescar vista para aplicar catálogo
 
     def _update_view(self):
         if self.df_original is None:
             return
 
+        # Manejo botones filtro duplicados
         if self.desc_dup_var.get():
             self.btn_unique.grid()
             self.btn_dup.grid()
@@ -252,12 +257,40 @@ class InicioView(ctk.CTk):
             solo_promo_1=solo_1
         ).copy()
 
+        # Merge con catálogo si existe
+        if self.catalogo_descuento is not None:
+            df_view = df_view.merge(
+                self.catalogo_descuento,
+                how='left',
+                on='Concatenar'
+            )
+            # Mostrar valores únicos antes de reemplazar (para debug)
+            print("Valores únicos en Descuento_Catalogo antes de asignar etiquetas:", df_view['Descuento_Catalogo'].unique())
+
+            # Mostrar "Si coincide" o "No coincide" con robustez
+            df_view['Descuento_Catalogo'] = df_view['Descuento_Catalogo'].astype(str).apply(
+                lambda x: "Si coincide" if x.strip() not in ["", "nan", "NaN"] else "No coincide"
+            )
+        else:
+            df_view['Descuento_Catalogo'] = ""
+
         # Insertar columna Descuento_Catalogo al lado de Descuento si no existe
         if 'Descuento' in df_view.columns:
             idx = df_view.columns.get_loc('Descuento')
             if 'Descuento_Catalogo' not in df_view.columns:
-                df_view.insert(idx + 1, 'Descuento_Catalogo', '')
+                df_view.insert(idx + 1, 'Descuento_Catalogo', df_view.pop('Descuento_Catalogo'))
 
+        # Filtrar según checkbox coincidencias/no coincidencias
+        if self.filter_solo_coincide.get() and not self.filter_solo_no_coincide.get():
+            df_view = df_view[df_view['Descuento_Catalogo'] == "Si coincide"]
+        elif self.filter_solo_no_coincide.get() and not self.filter_solo_coincide.get():
+            df_view = df_view[df_view['Descuento_Catalogo'] == "No coincide"]
+        elif self.filter_solo_coincide.get() and self.filter_solo_no_coincide.get():
+            # Si ambos están activos, mostrar todo (sin filtro)
+            pass
+        # Si ninguno activo, mostrar todo sin filtro
+
+        # Mapear campo Promocion a entero
         if 'Promocion' in df_view.columns:
             serie = df_view['Promocion']
             df_view['Promocion'] = (
@@ -267,6 +300,7 @@ class InicioView(ctk.CTk):
                      .astype(int, errors='ignore')
             )
 
+        # Duplicados
         if self.desc_dup_var.get() and 'Concatenar' in df_view.columns and 'Descuento' in df_view.columns:
             df_view['_dup_desc'] = df_view.duplicated(subset=['Concatenar', 'Descuento'], keep=False)
         else:
@@ -279,9 +313,9 @@ class InicioView(ctk.CTk):
 
         self.df_actual = df_view.copy()
 
+        # Limpiar y renderizar treeview
         for item in self.tree.get_children():
             self.tree.delete(item)
-
         render_tree(self.tree, df_view)
 
         if self.desc_dup_var.get():
