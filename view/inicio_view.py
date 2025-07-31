@@ -264,15 +264,14 @@ class InicioView(ctk.CTk):
                 how='left',
                 on='Concatenar'
             )
-            # Mostrar valores únicos antes de reemplazar (para debug)
-            print("Valores únicos en Descuento_Catalogo antes de asignar etiquetas:", df_view['Descuento_Catalogo'].unique())
-
-            # Mostrar "Si coincide" o "No coincide" con robustez
-            df_view['Descuento_Catalogo'] = df_view['Descuento_Catalogo'].astype(str).apply(
-                lambda x: "Si coincide" if x.strip() not in ["", "nan", "NaN"] else "No coincide"
+            # Si existe valor en catálogo lo muestra, sino mantiene valor original de 'Descuento'
+            df_view['Descuento_Catalogo'] = df_view.apply(
+                lambda row: row['Descuento_Catalogo'] if pd.notna(row['Descuento_Catalogo']) and str(row['Descuento_Catalogo']).strip() != "" else row['Descuento'],
+                axis=1
             )
         else:
-            df_view['Descuento_Catalogo'] = ""
+            # Si no hay catálogo, mostramos el valor original de descuento
+            df_view['Descuento_Catalogo'] = df_view['Descuento'] if 'Descuento' in df_view.columns else ""
 
         # Insertar columna Descuento_Catalogo al lado de Descuento si no existe
         if 'Descuento' in df_view.columns:
@@ -282,9 +281,15 @@ class InicioView(ctk.CTk):
 
         # Filtrar según checkbox coincidencias/no coincidencias
         if self.filter_solo_coincide.get() and not self.filter_solo_no_coincide.get():
-            df_view = df_view[df_view['Descuento_Catalogo'] == "Si coincide"]
+            # Mostrar solo filas donde Descuento_Catalogo proviene del catálogo (diferente del original)
+            df_view = df_view[
+                df_view['Descuento_Catalogo'].astype(str).str.strip() != ""  # Solo con algún valor
+            ]
         elif self.filter_solo_no_coincide.get() and not self.filter_solo_coincide.get():
-            df_view = df_view[df_view['Descuento_Catalogo'] == "No coincide"]
+            # Mostrar solo filas donde Descuento_Catalogo es igual a Descuento original (o vacío)
+            df_view = df_view[
+                df_view['Descuento_Catalogo'].astype(str).str.strip() == ""  # Si quieres filtrar con lógica distinta puedes ajustar aquí
+            ]
         elif self.filter_solo_coincide.get() and self.filter_solo_no_coincide.get():
             # Si ambos están activos, mostrar todo (sin filtro)
             pass
