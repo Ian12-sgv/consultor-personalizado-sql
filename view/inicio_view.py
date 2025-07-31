@@ -4,7 +4,6 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 import customtkinter as ctk
 from tkinter import ttk, messagebox
-from tkinter.filedialog import askopenfilename
 import pandas as pd
 from components.excelPy import run_excelPy
 
@@ -17,7 +16,6 @@ from components.services.filter_service import apply_filters
 # UI modularizados
 from components.ui.placeholder_combo import PlaceholderCombo
 from components.ui.debounce import Debouncer
-from components.ui.treeview_renderer import render as render_tree
 from components.ui.button import Button
 
 PLACEHOLDER_REGION     = "Región"
@@ -264,65 +262,43 @@ class InicioView(ctk.CTk):
                 how='left',
                 on='Concatenar'
             )
-            # Si existe valor en catálogo lo muestra, sino mantiene valor original de 'Descuento'
-            df_view['Descuento_Catalogo'] = df_view.apply(
-                lambda row: row['Descuento_Catalogo'] if pd.notna(row['Descuento_Catalogo']) and str(row['Descuento_Catalogo']).strip() != "" else row['Descuento'],
-                axis=1
-            )
+
+            # Para filas sin descuento en catálogo usar descuento original
+            def obtener_descuento(row):
+                if pd.isna(row['Descuento_Catalogo']):
+                    return row['Descuento']
+                return row['Descuento_Catalogo']
+
+            df_view['Descuento_Catalogo'] = df_view.apply(obtener_descuento, axis=1)
         else:
-            # Si no hay catálogo, mostramos el valor original de descuento
-            df_view['Descuento_Catalogo'] = df_view['Descuento'] if 'Descuento' in df_view.columns else ""
+            df_view['Descuento_Catalogo'] = df_view['Descuento']
 
-        # Insertar columna Descuento_Catalogo al lado de Descuento si no existe
-        if 'Descuento' in df_view.columns:
-            idx = df_view.columns.get_loc('Descuento')
-            if 'Descuento_Catalogo' not in df_view.columns:
-                df_view.insert(idx + 1, 'Descuento_Catalogo', df_view.pop('Descuento_Catalogo'))
-
-        # Filtrar según checkbox coincidencias/no coincidencias
-        if self.filter_solo_coincide.get() and not self.filter_solo_no_coincide.get():
-            # Mostrar solo filas donde Descuento_Catalogo proviene del catálogo (diferente del original)
-            df_view = df_view[
-                df_view['Descuento_Catalogo'].astype(str).str.strip() != ""  # Solo con algún valor
-            ]
-        elif self.filter_solo_no_coincide.get() and not self.filter_solo_coincide.get():
-            # Mostrar solo filas donde Descuento_Catalogo es igual a Descuento original (o vacío)
-            df_view = df_view[
-                df_view['Descuento_Catalogo'].astype(str).str.strip() == ""  # Si quieres filtrar con lógica distinta puedes ajustar aquí
-            ]
-        elif self.filter_solo_coincide.get() and self.filter_solo_no_coincide.get():
-            # Si ambos están activos, mostrar todo (sin filtro)
-            pass
-        # Si ninguno activo, mostrar todo sin filtro
-
-        # Mapear campo Promocion a entero
-        if 'Promocion' in df_view.columns:
-            serie = df_view['Promocion']
-            df_view['Promocion'] = (
-                serie.map({True:1, False:0, 'True':1, 'False':0,
-                           'true':1, 'false':0, '1':1, '0':0})
-                     .fillna(serie)
-                     .astype(int, errors='ignore')
-            )
-
-        # Duplicados
-        if self.desc_dup_var.get() and 'Concatenar' in df_view.columns and 'Descuento' in df_view.columns:
-            df_view['_dup_desc'] = df_view.duplicated(subset=['Concatenar', 'Descuento'], keep=False)
-        else:
-            df_view['_dup_desc'] = False
-
-        if self.filter_mode == 'unique':
-            df_view = df_view[~df_view['_dup_desc']]
-        elif self.filter_mode == 'dup':
-            df_view = df_view[df_view['_dup_desc']]
+        # Reordenar columnas para poner Descuento_Catalogo justo al lado de Descuento
+        if 'Descuento' in df_view.columns and 'Descuento_Catalogo' in df_view.columns:
+            cols = list(df_view.columns)
+            cols.remove('Descuento_Catalogo')
+            idx = cols.index('Descuento')
+            cols.insert(idx + 1, 'Descuento_Catalogo')
+            df_view = df_view[cols]
 
         self.df_actual = df_view.copy()
 
-        # Limpiar y renderizar treeview
-        for item in self.tree.get_children():
-            self.tree.delete(item)
-        render_tree(self.tree, df_view)
+        # Limpiar el Treeview (items y columnas)
+        self.tree.delete(*self.tree.get_children())
+        self.tree["columns"] = ()
 
+        # Configurar columnas y encabezados en orden correcto
+        self.tree["columns"] = list(df_view.columns)
+        for col in df_view.columns:
+            self.tree.heading(col, text=col)
+            self.tree.column(col, width=100, anchor="w")  # Ajusta el width si quieres
+
+        # Insertar filas en el Treeview
+        for _, row in df_view.iterrows():
+            values = [row[col] for col in df_view.columns]
+            self.tree.insert("", "end", values=values)
+
+        # Resaltar duplicados si aplica
         if self.desc_dup_var.get():
             self._highlight_desc_duplicados()
         else:
