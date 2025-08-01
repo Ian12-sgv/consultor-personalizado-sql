@@ -1,9 +1,11 @@
 import sys
 import os
+import time
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 import customtkinter as ctk
 from tkinter import ttk, messagebox
+from tkinter.filedialog import askopenfilename
 import pandas as pd
 from components.excelPy import run_excelPy
 
@@ -16,6 +18,7 @@ from components.services.filter_service import apply_filters
 # UI modularizados
 from components.ui.placeholder_combo import PlaceholderCombo
 from components.ui.debounce import Debouncer
+from components.ui.treeview_renderer import render as render_tree
 from components.ui.button import Button
 
 PLACEHOLDER_REGION     = "Región"
@@ -158,9 +161,17 @@ class InicioView(ctk.CTk):
         self.tree.configure(xscrollcommand=self.scroll_x.set)
         self.scroll_x.grid(row=4, column=0, sticky="ew", padx=10)
 
+        # Label de carga (loading)
+        self.loading_label = ctk.CTkLabel(self, text="")
+        self.loading_label.grid(row=5, column=0, pady=(0,10))
+
     def importar_datos(self):
         try:
+            self.loading_label.configure(text="Cargando datos desde la base, por favor espere...")
+            self.update_idletasks()
+
             self.df_original = pd.read_sql(INVENTORY_SQL, self.engine)
+
             suc = self.df_original[self.df_original['Region'].str.contains('Sucursales', na=False)]
             regiones = ["Todas"] + sorted(suc['Region'].dropna().unique())
             self.region_selector.reset_placeholder(values=regiones)
@@ -168,9 +179,17 @@ class InicioView(ctk.CTk):
             refs = sorted(self.df_original['Referencia'].dropna().astype(str).unique())
             self.referencia_entry.reset_placeholder(values=refs)
             self.pivot_service.clear()
+            self.catalogo_descuento = None  # Reset catálogo al importar datos base
+
+            self.loading_label.configure(text="Procesando datos...")
+            self.update_idletasks()
+
             self._update_view()
+
+            self.loading_label.configure(text="")
             messagebox.showinfo("Importación", "Datos importados correctamente.")
         except Exception as e:
+            self.loading_label.configure(text="")
             messagebox.showerror("Error al importar datos", str(e))
 
     def importar_excel(self):
@@ -178,6 +197,9 @@ class InicioView(ctk.CTk):
         if df is None:
             messagebox.showwarning("Importación cancelada", "No se importó ningún archivo.")
             return
+
+        self.loading_label.configure(text="Procesando archivo Excel importado...")
+        self.update_idletasks()
 
         self.df_original = df
         try:
@@ -188,9 +210,12 @@ class InicioView(ctk.CTk):
             refs = sorted(self.df_original['Referencia'].dropna().astype(str).unique())
             self.referencia_entry.reset_placeholder(values=refs)
             self.pivot_service.clear()
+            self.catalogo_descuento = None  # Reset catálogo al importar Excel
             self._update_view()
+            self.loading_label.configure(text="")
             messagebox.showinfo("Importación", "Excel importado correctamente.")
         except Exception as e:
+            self.loading_label.configure(text="")
             messagebox.showerror("Error al importar Excel", str(e))
 
     def importar_catalogo_descuento(self):
@@ -223,6 +248,10 @@ class InicioView(ctk.CTk):
         if self.df_original is None:
             return
 
+        start_time = time.time()
+        self.loading_label.configure(text="Aplicando filtros y procesando vista...")
+        self.update_idletasks()
+
         # Manejo botones filtro duplicados
         if self.desc_dup_var.get():
             self.btn_unique.grid()
@@ -238,7 +267,10 @@ class InicioView(ctk.CTk):
             df_base = df_base[df_base['Region'].str.contains('Sucursales', na=False)]
         elif opc == "Solo Casa Matriz":
             df_base = df_base[df_base['Region'].str.contains('Casa Matatriz', na=False)]
+
         pivot_df = self.pivot_service.get_pivot(opc, df_base)
+        print("Tiempo pivote:", round(time.time() - start_time, 2), "segundos")
+        start_time = time.time()
 
         region = self.region_selector.get_value()
         referencia = self.referencia_entry.get_value()
@@ -254,26 +286,38 @@ class InicioView(ctk.CTk):
             exclude_marcas=exclude_list,
             solo_promo_1=solo_1
         ).copy()
+        print("Tiempo filtros:", round(time.time() - start_time, 2), "segundos")
+        start_time = time.time()
 
-        # Merge con catálogo si existe
+        # Solo mergear catálogo si ya fue importado
         if self.catalogo_descuento is not None:
             df_view = df_view.merge(
                 self.catalogo_descuento,
                 how='left',
                 on='Concatenar'
             )
+            print("Tiempo merge catálogo:", round(time.time() - start_time, 2), "segundos")
+            start_time = time.time()
 
-            # Para filas sin descuento en catálogo usar descuento original
-            def obtener_descuento(row):
-                if pd.isna(row['Descuento_Catalogo']):
-                    return row['Descuento']
-                return row['Descuento_Catalogo']
+            # Vectorizado para reemplazar vacíos y NaN en Descuento_Catalogo con Descuento
+            df_view['Descuento_Catalogo'] = df_view['Descuento_Catalogo'].fillna("").replace(["nan", "NaN"], "")
+            mask_vacio = df_view['Descuento_Catalogo'].str.strip() == ""
+            df_view.loc[mask_vacio, 'Descuento_Catalogo'] = df_view.loc[mask_vacio, 'Descuento']
 
-            df_view['Descuento_Catalogo'] = df_view.apply(obtener_descuento, axis=1)
+            # Formatear Descuento_Catalogo: entero + %
+            def formatear_descuento_vector(serie):
+                s = serie.astype(str).str.replace('%', '').str.strip()
+                s_num = pd.to_numeric(s, errors='coerce')
+                s_formateado = s_num.dropna().apply(lambda x: f"{int(round(x))}%")
+                serie.update(s_formateado)
+                return serie
+
+            df_view['Descuento_Catalogo'] = formatear_descuento_vector(df_view['Descuento_Catalogo'])
         else:
-            df_view['Descuento_Catalogo'] = df_view['Descuento']
+            # Si no hay catálogo importado, dejar columna vacía
+            df_view['Descuento_Catalogo'] = ""
 
-        # Reordenar columnas para poner Descuento_Catalogo justo al lado de Descuento
+        # Insertar columna Descuento_Catalogo al lado de Descuento si no existe
         if 'Descuento' in df_view.columns and 'Descuento_Catalogo' in df_view.columns:
             cols = list(df_view.columns)
             cols.remove('Descuento_Catalogo')
@@ -281,29 +325,59 @@ class InicioView(ctk.CTk):
             cols.insert(idx + 1, 'Descuento_Catalogo')
             df_view = df_view[cols]
 
+        # Filtrar según checkbox coincidencias/no coincidencias comparando igualdad entre ambas columnas
+        if self.filter_solo_coincide.get() and not self.filter_solo_no_coincide.get():
+            df_view = df_view[
+                (df_view['Descuento_Catalogo'].notna()) &
+                (df_view['Descuento'].notna()) &
+                (df_view['Descuento_Catalogo'] == df_view['Descuento'])
+            ]
+        elif self.filter_solo_no_coincide.get() and not self.filter_solo_coincide.get():
+            df_view = df_view[
+                (df_view['Descuento_Catalogo'].isna()) |
+                (df_view['Descuento'].isna()) |
+                (df_view['Descuento_Catalogo'] != df_view['Descuento'])
+            ]
+        elif self.filter_solo_coincide.get() and self.filter_solo_no_coincide.get():
+            pass  # mostrar todo, sin filtro
+
+        # Mapear campo Promocion a entero
+        if 'Promocion' in df_view.columns:
+            serie = df_view['Promocion']
+            df_view['Promocion'] = (
+                serie.map({True:1, False:0, 'True':1, 'False':0,
+                           'true':1, 'false':0, '1':1, '0':0})
+                     .fillna(serie)
+                     .astype(int, errors='ignore')
+            )
+
+        # Duplicados
+        if self.desc_dup_var.get() and 'Concatenar' in df_view.columns and 'Descuento' in df_view.columns:
+            df_view['_dup_desc'] = df_view.duplicated(subset=['Concatenar', 'Descuento'], keep=False)
+        else:
+            df_view['_dup_desc'] = False
+
+        if self.filter_mode == 'unique':
+            df_view = df_view[~df_view['_dup_desc']]
+        elif self.filter_mode == 'dup':
+            df_view = df_view[df_view['_dup_desc']]
+
         self.df_actual = df_view.copy()
 
-        # Limpiar el Treeview (items y columnas)
-        self.tree.delete(*self.tree.get_children())
-        self.tree["columns"] = ()
+        # Limpiar y renderizar treeview
+        for item in self.tree.get_children():
+            self.tree.delete(item)
 
-        # Configurar columnas y encabezados en orden correcto
-        self.tree["columns"] = list(df_view.columns)
-        for col in df_view.columns:
-            self.tree.heading(col, text=col)
-            self.tree.column(col, width=100, anchor="w")  # Ajusta el width si quieres
+        render_tree(self.tree, df_view)
 
-        # Insertar filas en el Treeview
-        for _, row in df_view.iterrows():
-            values = [row[col] for col in df_view.columns]
-            self.tree.insert("", "end", values=values)
-
-        # Resaltar duplicados si aplica
         if self.desc_dup_var.get():
             self._highlight_desc_duplicados()
         else:
             for iid in self.tree.get_children():
                 self.tree.item(iid, tags=())
+
+        self.loading_label.configure(text="")
+        print("Tiempo total _update_view:", round(time.time() - start_time, 2), "segundos")
 
     def _set_filter_mode(self, mode):
         self.filter_mode = None if self.filter_mode == mode else mode
