@@ -1,8 +1,6 @@
-# components/exporter.py
-
 import os
 from tkinter import filedialog, messagebox
-from reportlab.lib.pagesizes import letter, landscape
+from reportlab.lib.pagesizes import letter
 from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
 from reportlab.lib import colors
 from reportlab.lib.styles import getSampleStyleSheet
@@ -29,54 +27,48 @@ def exportar_dataframe_a_excel(df):
         messagebox.showerror("Error", f"No se pudo exportar a Excel:\n{e}")
 
 
-def export_pdfs_por_sucursal(df, sucursales):
+def export_pdfs_por_sucursal(df, selected_columns):
     """
-    Genera un PDF por cada sucursal seleccionada. Cada PDF contendrá:
-     - Un título con el nombre de la sucursal.
-     - Una tabla con las columnas 'Concatenar' y la columna de existencia de esa sucursal.
-    Devuelve la ruta de la carpeta donde se guardaron los archivos.
+    Exporta un solo PDF con todas las columnas seleccionadas por el usuario.
+
+    Args:
+        df (pd.DataFrame): DataFrame con los datos completos.
+        selected_columns (list): Lista con las columnas que el usuario seleccionó para exportar.
     """
-    # Pedir carpeta destino
-    carpeta = filedialog.askdirectory(title="Selecciona carpeta para guardar PDFs")
+    if df is None or df.empty:
+        messagebox.showwarning("Advertencia", "No hay datos para exportar.")
+        return
+
+    carpeta = filedialog.askdirectory(title="Selecciona carpeta para guardar PDF")
     if not carpeta:
-        raise RuntimeError("Exportación cancelada por el usuario.")
+        messagebox.showwarning("Exportación cancelada", "No se seleccionó carpeta para guardar PDF.")
+        return
 
     styles = getSampleStyleSheet()
-    for suc in sucursales:
-        # Nombre de archivo amigable
-        nombre_pdf = f"{suc.replace(' ', '_').replace('/', '_')}.pdf"
-        ruta_pdf = os.path.join(carpeta, nombre_pdf)
+    data = [selected_columns]  # encabezados
 
-        # Crear documento en horizontal
-        doc = SimpleDocTemplate(ruta_pdf, pagesize=landscape(letter),
-                                title=f"Existencias en {suc}")
-        elements = []
+    for _, row in df[selected_columns].iterrows():
+        fila = [str(row[col]) if row[col] is not None else "" for col in selected_columns]
+        data.append(fila)
 
-        # Título
-        titulo = Paragraph(f"Existencias en {suc}", styles["Heading1"])
-        elements.append(titulo)
-        elements.append(Spacer(1, 12))
+    nombre_pdf = "Reporte_Seleccionado.pdf"
+    ruta_pdf = os.path.join(carpeta, nombre_pdf)
 
-        # Construir tabla: encabezados + filas
-        tabla_data = [["Concatenar", suc]]
-        # Agregar filas
-        for _, row in df.iterrows():
-            tabla_data.append([row.get("Concatenar", ""), row.get(suc, 0)])
+    doc = SimpleDocTemplate(ruta_pdf, pagesize=letter)
+    flow = [Paragraph("Reporte PDF - Columnas seleccionadas", styles['Title']), Spacer(1, 12)]
 
-        # Definir estilo de la tabla
-        table = Table(tabla_data, repeatRows=1)
-        table.setStyle(TableStyle([
-            ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#1f6aa5")),
-            ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
-            ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
-            ("ALIGN", (0, 0), (-1, -1), "CENTER"),
-            ("GRID", (0, 0), (-1, -1), 0.5, colors.gray),
-            ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.whitesmoke, colors.lightgrey]),
-        ]))
+    table = Table(data, hAlign="LEFT")
+    table.setStyle(TableStyle([
+        ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#1f6aa5")),
+        ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+        ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+        ("ALIGN", (0, 0), (-1, -1), "CENTER"),
+        ("GRID", (0, 0), (-1, -1), 0.5, colors.gray),
+        ("ROWBACKGROUNDS", (1, 0), (-1, -1), [colors.whitesmoke, colors.lightgrey]),
+    ]))
 
-        elements.append(table)
+    flow.append(table)
+    doc.build(flow)
 
-        # Guardar PDF
-        doc.build(elements)
-
-    return carpeta
+    messagebox.showinfo("Exportación PDF", f"PDF generado correctamente en:\n{ruta_pdf}")
+    return ruta_pdf

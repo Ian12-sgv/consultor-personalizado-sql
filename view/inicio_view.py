@@ -32,11 +32,10 @@ class InicioView(ctk.CTk):
         self.config_sql = config_sql
         self.df_original = None
         self.df_actual = None
-        self.catalogo_descuento = None  # Aquí almacenamos el catálogo
+        self.catalogo_descuento = None
         self.pivot_service = PivotService()
         self.filter_mode = None  # 'unique', 'dup', or None
 
-        # Checkbox para filtrar solo coincidencias y no coincidencias
         self.filter_solo_coincide = ctk.BooleanVar(value=False)
         self.filter_solo_no_coincide = ctk.BooleanVar(value=False)
 
@@ -129,7 +128,6 @@ class InicioView(ctk.CTk):
         self.btn_unique.grid_remove()
         self.btn_dup.grid_remove()
 
-        # Checkbox para filtrar solo coincidencias en Descuento_Catalogo
         ctk.CTkCheckBox(
             filtro_frame,
             text="Mostrar solo coincidencias",
@@ -137,7 +135,6 @@ class InicioView(ctk.CTk):
             command=self._update_view
         ).grid(row=6, column=0, columnspan=2, padx=10, pady=5, sticky="w")
 
-        # Checkbox para filtrar solo no coincidencias en Descuento_Catalogo
         ctk.CTkCheckBox(
             filtro_frame,
             text="Mostrar solo no coincidencias",
@@ -161,7 +158,6 @@ class InicioView(ctk.CTk):
         self.tree.configure(xscrollcommand=self.scroll_x.set)
         self.scroll_x.grid(row=4, column=0, sticky="ew", padx=10)
 
-        # Label de carga (loading)
         self.loading_label = ctk.CTkLabel(self, text="")
         self.loading_label.grid(row=5, column=0, pady=(0,10))
 
@@ -179,7 +175,7 @@ class InicioView(ctk.CTk):
             refs = sorted(self.df_original['Referencia'].dropna().astype(str).unique())
             self.referencia_entry.reset_placeholder(values=refs)
             self.pivot_service.clear()
-            self.catalogo_descuento = None  # Reset catálogo al importar datos base
+            self.catalogo_descuento = None
 
             self.loading_label.configure(text="Procesando datos...")
             self.update_idletasks()
@@ -210,7 +206,7 @@ class InicioView(ctk.CTk):
             refs = sorted(self.df_original['Referencia'].dropna().astype(str).unique())
             self.referencia_entry.reset_placeholder(values=refs)
             self.pivot_service.clear()
-            self.catalogo_descuento = None  # Reset catálogo al importar Excel
+            self.catalogo_descuento = None
             self._update_view()
             self.loading_label.configure(text="")
             messagebox.showinfo("Importación", "Excel importado correctamente.")
@@ -224,10 +220,8 @@ class InicioView(ctk.CTk):
             messagebox.showwarning("Importación cancelada", "No se importó catálogo de descuentos.")
             return
 
-        # Limpiar espacios en nombres de columnas
         df_catalogo.columns = df_catalogo.columns.str.strip()
 
-        # Mostrar columnas y primeras filas para diagnosticar
         print("Columnas catálogo Excel:", df_catalogo.columns.tolist())
         print("Primeras filas catálogo:\n", df_catalogo.head(10))
 
@@ -242,7 +236,7 @@ class InicioView(ctk.CTk):
         print("Valores únicos en catálogo de descuentos:", self.catalogo_descuento['Descuento_Catalogo'].unique())
 
         messagebox.showinfo("Catálogo importado", "Catálogo de descuentos cargado correctamente.")
-        self._update_view()  # refrescar vista para aplicar catálogo
+        self._update_view()
 
     def _update_view(self):
         if self.df_original is None:
@@ -252,7 +246,6 @@ class InicioView(ctk.CTk):
         self.loading_label.configure(text="Aplicando filtros y procesando vista...")
         self.update_idletasks()
 
-        # Manejo botones filtro duplicados
         if self.desc_dup_var.get():
             self.btn_unique.grid()
             self.btn_dup.grid()
@@ -289,7 +282,6 @@ class InicioView(ctk.CTk):
         print("Tiempo filtros:", round(time.time() - start_time, 2), "segundos")
         start_time = time.time()
 
-        # Solo mergear catálogo si ya fue importado
         if self.catalogo_descuento is not None:
             df_view = df_view.merge(
                 self.catalogo_descuento,
@@ -299,12 +291,10 @@ class InicioView(ctk.CTk):
             print("Tiempo merge catálogo:", round(time.time() - start_time, 2), "segundos")
             start_time = time.time()
 
-            # Vectorizado para reemplazar vacíos y NaN en Descuento_Catalogo con Descuento
             df_view['Descuento_Catalogo'] = df_view['Descuento_Catalogo'].fillna("").replace(["nan", "NaN"], "")
             mask_vacio = df_view['Descuento_Catalogo'].str.strip() == ""
             df_view.loc[mask_vacio, 'Descuento_Catalogo'] = df_view.loc[mask_vacio, 'Descuento']
 
-            # Formatear Descuento_Catalogo: entero + %
             def formatear_descuento_vector(serie):
                 s = serie.astype(str).str.replace('%', '').str.strip()
                 s_num = pd.to_numeric(s, errors='coerce')
@@ -314,10 +304,8 @@ class InicioView(ctk.CTk):
 
             df_view['Descuento_Catalogo'] = formatear_descuento_vector(df_view['Descuento_Catalogo'])
         else:
-            # Si no hay catálogo importado, dejar columna vacía
             df_view['Descuento_Catalogo'] = ""
 
-        # Insertar columna Descuento_Catalogo al lado de Descuento si no existe
         if 'Descuento' in df_view.columns and 'Descuento_Catalogo' in df_view.columns:
             cols = list(df_view.columns)
             cols.remove('Descuento_Catalogo')
@@ -325,7 +313,6 @@ class InicioView(ctk.CTk):
             cols.insert(idx + 1, 'Descuento_Catalogo')
             df_view = df_view[cols]
 
-        # Filtrar según checkbox coincidencias/no coincidencias comparando igualdad entre ambas columnas
         if self.filter_solo_coincide.get() and not self.filter_solo_no_coincide.get():
             df_view = df_view[
                 (df_view['Descuento_Catalogo'].notna()) &
@@ -339,9 +326,8 @@ class InicioView(ctk.CTk):
                 (df_view['Descuento_Catalogo'] != df_view['Descuento'])
             ]
         elif self.filter_solo_coincide.get() and self.filter_solo_no_coincide.get():
-            pass  # mostrar todo, sin filtro
+            pass
 
-        # Mapear campo Promocion a entero
         if 'Promocion' in df_view.columns:
             serie = df_view['Promocion']
             df_view['Promocion'] = (
@@ -351,7 +337,6 @@ class InicioView(ctk.CTk):
                      .astype(int, errors='ignore')
             )
 
-        # Duplicados
         if self.desc_dup_var.get() and 'Concatenar' in df_view.columns and 'Descuento' in df_view.columns:
             df_view['_dup_desc'] = df_view.duplicated(subset=['Concatenar', 'Descuento'], keep=False)
         else:
@@ -364,7 +349,6 @@ class InicioView(ctk.CTk):
 
         self.df_actual = df_view.copy()
 
-        # Limpiar y renderizar treeview
         for item in self.tree.get_children():
             self.tree.delete(item)
 
@@ -394,21 +378,25 @@ class InicioView(ctk.CTk):
         if self.df_actual is None or self.df_actual.empty:
             messagebox.showwarning("Sin datos", "Primero importa o filtra datos.")
             return
-        cols = [c for c in self.df_actual.columns if c not in
-                ['Concatenar', 'Sucursal_Total', 'Casa_matriz_Total',
-                 'Total_Existencia', 'Porcentaje_Existencia_CasaMatriz',
-                 'Porcentaje_Existencia_Sucursales']]
-        if not cols:
-            messagebox.showinfo("Sin sucursales", "No hay columnas de sucursales para exportar.")
+
+        all_columns = list(self.df_actual.columns)
+
+        branch_keywords = ['Casa Matriz', 'Sucursal']
+
+        data_columns = [col for col in all_columns if not any(kw in col for kw in branch_keywords)]
+
+        if not data_columns:
+            messagebox.showinfo("Sin columnas de datos", "No hay columnas de datos para exportar.")
             return
+
         modal = ctk.CTkToplevel(self)
-        modal.title("Seleccionar sucursales para PDF")
+        modal.title("Seleccionar columnas para PDF")
         modal.geometry("320x400")
         modal.transient(self)
         scroll = ctk.CTkScrollableFrame(modal, width=300, height=300)
         scroll.pack(padx=10, pady=10, fill="both", expand=True)
         vars_chk = {}
-        for c in cols:
+        for c in data_columns:
             var = ctk.BooleanVar(master=modal, value=False)
             chk = ctk.CTkCheckBox(scroll, text=c, variable=var)
             chk.pack(anchor='w', pady=2)
@@ -417,16 +405,67 @@ class InicioView(ctk.CTk):
         btn_frame.pack(fill='x', padx=10, pady=(0, 10))
         Button(btn_frame, text="Cancelar", command=modal.destroy).grid(row=0, column=1, padx=(0, 5), pady=5)
 
-        def _confirm():
-            sel = [s for s, v in vars_chk.items() if v.get()]
+        def _confirm_columns():
+            selected_cols = [s for s, v in vars_chk.items() if v.get()]
+            if not selected_cols:
+                messagebox.showwarning("Selección requerida", "Seleccione al menos una columna.")
+                return
             modal.destroy()
-            if sel:
-                self._exportar_pdfs_por_sucursal(sel)
+            self._open_branch_selector(selected_cols)
 
-        Button(btn_frame, text="Aceptar", command=_confirm).grid(row=0, column=2, padx=5, pady=5)
+        Button(btn_frame, text="Aceptar", command=_confirm_columns).grid(row=0, column=2, padx=5, pady=5)
 
-    def _exportar_pdfs_por_sucursal(self, sucursales):
-        export_pdfs_por_sucursal(self.df_actual, sucursales)
+    def _open_branch_selector(self, selected_columns):
+        if self.df_actual is None or self.df_actual.empty:
+            messagebox.showwarning("Sin datos", "Primero importa o filtra datos.")
+            return
+
+        all_columns = list(self.df_actual.columns)
+        branch_keywords = ['Casa Matriz', 'Sucursal']
+        branch_columns = [col for col in all_columns if any(kw in col for kw in branch_keywords)]
+
+        if not branch_columns:
+            messagebox.showinfo("Sin sucursales", "No hay columnas de sucursales para exportar.")
+            return
+
+        modal = ctk.CTkToplevel(self)
+        modal.title("Seleccionar sucursales para PDF")
+        modal.geometry("320x400")
+        modal.transient(self)
+        scroll = ctk.CTkScrollableFrame(modal, width=300, height=300)
+        scroll.pack(padx=10, pady=10, fill="both", expand=True)
+        vars_chk = {}
+        for c in branch_columns:
+            var = ctk.BooleanVar(master=modal, value=False)
+            chk = ctk.CTkCheckBox(scroll, text=c, variable=var)
+            chk.pack(anchor='w', pady=2)
+            vars_chk[c] = var
+        btn_frame = ctk.CTkFrame(modal)
+        btn_frame.pack(fill='x', padx=10, pady=(0, 10))
+        Button(btn_frame, text="Cancelar", command=modal.destroy).grid(row=0, column=1, padx=(0, 5), pady=5)
+
+        def _confirm_branches():
+            selected_branches = [s for s, v in vars_chk.items() if v.get()]
+            if not selected_branches:
+                messagebox.showwarning("Selección requerida", "Seleccione al menos una sucursal o casa matriz.")
+                return
+            modal.destroy()
+            self._export_pdfs(selected_columns, selected_branches)
+
+        Button(btn_frame, text="Aceptar", command=_confirm_branches).grid(row=0, column=2, padx=5, pady=5)
+
+    def _export_pdfs(self, selected_columns, selected_branches):
+        cols_to_export = selected_columns + selected_branches
+
+        if not cols_to_export:
+            messagebox.showwarning("Exportación", "Debe seleccionar al menos una columna para exportar.")
+            return
+
+        df_to_export = self.df_actual.loc[:, self.df_actual.columns.intersection(cols_to_export)].copy()
+
+        print(f"Exportando PDF con columnas: {cols_to_export}")
+
+        export_pdfs_por_sucursal(df_to_export, list(df_to_export.columns))
 
     def exportar_excel(self):
         exportar_dataframe_a_excel(self.df_actual)
