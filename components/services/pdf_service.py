@@ -1,9 +1,10 @@
 from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
 from reportlab.lib import colors
-from reportlab.lib.pagesizes import letter
+from reportlab.lib.pagesizes import letter, landscape
 from reportlab.lib.styles import getSampleStyleSheet
 import os
 import pandas as pd
+
 
 def export_pdfs_descuentos(df_pivot, output_dir="reportes_descuentos"):
     """
@@ -29,7 +30,8 @@ def export_pdfs_descuentos(df_pivot, output_dir="reportes_descuentos"):
     data = [required_columns] + df_pivot[required_columns].fillna("").values.tolist()
 
     fname = os.path.join(output_dir, "Descuentos.pdf")
-    doc = SimpleDocTemplate(fname, pagesize=letter)
+    # Cambiado a landscape para orientación horizontal
+    doc = SimpleDocTemplate(fname, pagesize=landscape(letter))
     flow = [Paragraph("Descuentos por producto", styles['Title']), Spacer(1, 12)]
 
     tbl = Table(data, hAlign="LEFT")
@@ -66,19 +68,20 @@ def export_pdfs_por_sucursal(df, sucursales, output_dir="reportes_sucursales"):
     print(sucursales)
     print("Confirmando que las columnas y sucursales coinciden con la selección del usuario...\n")
 
-    columnas = df.columns.tolist()  # Export exactly columns present in df
+    columnas = df.columns.tolist()  # Export exactly columns present en df
 
     data = [columnas]  # Header row
     for _, row in df.iterrows():
         data.append([str(row[col]) if pd.notna(row[col]) else "" for col in columnas])
 
     fname = os.path.join(output_dir, "Reporte_Sucursales.pdf")
-    doc = SimpleDocTemplate(fname, pagesize=letter)
+    # Cambiado a landscape para orientación horizontal
+    doc = SimpleDocTemplate(fname, pagesize=landscape(letter))
     flow = [Paragraph("Reporte de columnas seleccionadas", styles['Title']), Spacer(1, 12)]
 
     table = Table(data, hAlign="LEFT")
     table.setStyle(TableStyle([
-        ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#1f6aa5")),
+        ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#eeeeee")),
         ("TEXTCOLOR",  (0, 0), (-1, 0), colors.white),
         ("GRID",       (0, 0), (-1, -1), 0.5, colors.grey),
         ("ALIGN",      (1, 1), (-1, -1), "CENTER"),
