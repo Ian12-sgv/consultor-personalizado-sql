@@ -30,24 +30,37 @@ class InventoryService:
 
     def importar_catalogo_descuento(self, df_catalogo):
         df_catalogo.columns = df_catalogo.columns.str.strip()
-        self.catalogo_descuento = pd.DataFrame({
-            'Concatenar': df_catalogo['Concatenar'],
-            'Descuento_Catalogo': df_catalogo['% Descuento']
-        })
+        if 'Concatenar' in df_catalogo.columns and '% Descuento' in df_catalogo.columns:
+            self.catalogo_descuento = pd.DataFrame({
+                'Concatenar': df_catalogo['Concatenar'],
+                'Descuento_Catalogo': df_catalogo['% Descuento']
+            })
+        else:
+            # Opcional: lanzar aviso o mensaje de error para columnas faltantes
+            raise ValueError("El catálogo de descuentos debe contener las columnas 'Concatenar' y '% Descuento'.")
 
     def aplicar_filtros(self, opc, region, referencia, exclude_list, solo_1,
                         promo_var, desc_dup_var, filter_solo_coincide, filter_solo_no_coincide):
-        # Empezar con df_original según opción pivote
         if self.df_original is None:
             return None
 
         df_base = self.df_original
-        if opc == "Solo Sucursales":
-            df_base = df_base[df_base['Region'].str.contains('Sucursales', na=False)]
-        elif opc == "Solo Casa Matriz":
-            df_base = df_base[df_base['Region'].str.contains('Casa Matatriz', na=False)]
+
+        # Validar existencia de columna 'Region' antes de filtrar
+        if 'Region' in df_base.columns:
+            if opc == "Solo Sucursales":
+                df_base = df_base[df_base['Region'].str.contains('Sucursales', na=False)]
+            elif opc == "Solo Casa Matriz":
+                df_base = df_base[df_base['Region'].str.contains('Casa Matatriz', na=False)]
+        else:
+            # Si no existe 'Region', no filtrar por esta columna
+            pass
 
         pivot_df = self.pivot_service.get_pivot(opc, df_base)
+
+        # Validar existencia de 'Referencia' antes de filtrar
+        if 'Referencia' not in pivot_df.columns:
+            referencia = ''  # evitar filtro por referencia si no existe
 
         df_view = apply_filters(
             pivot_df,
@@ -59,25 +72,29 @@ class InventoryService:
             solo_promo_1=solo_1
         ).copy()
 
-        # Merge catálogo descuento si existe
+        # Merge catálogo descuento si existe y columnas necesarias están presentes
         if self.catalogo_descuento is not None:
-            df_view = df_view.merge(self.catalogo_descuento, how='left', on='Concatenar')
-            df_view['Descuento_Catalogo'] = df_view['Descuento_Catalogo'].fillna("").replace(["nan", "NaN"], "")
-            mask_vacio = df_view['Descuento_Catalogo'].str.strip() == ""
-            df_view.loc[mask_vacio, 'Descuento_Catalogo'] = df_view.loc[mask_vacio, 'Descuento']
+            if 'Concatenar' in df_view.columns and 'Concatenar' in self.catalogo_descuento.columns:
+                df_view = df_view.merge(self.catalogo_descuento, how='left', on='Concatenar')
+                df_view['Descuento_Catalogo'] = df_view['Descuento_Catalogo'].fillna("").replace(["nan", "NaN"], "")
+                mask_vacio = df_view['Descuento_Catalogo'].str.strip() == ""
+                df_view.loc[mask_vacio, 'Descuento_Catalogo'] = df_view.loc[mask_vacio, 'Descuento']
 
-            def formatear_descuento_vector(serie):
-                s = serie.astype(str).str.replace('%', '').str.strip()
-                s_num = pd.to_numeric(s, errors='coerce')
-                s_formateado = s_num.dropna().apply(lambda x: f"{int(round(x))}%")
-                serie.update(s_formateado)
-                return serie
+                def formatear_descuento_vector(serie):
+                    s = serie.astype(str).str.replace('%', '').str.strip()
+                    s_num = pd.to_numeric(s, errors='coerce')
+                    s_formateado = s_num.dropna().apply(lambda x: f"{int(round(x))}%")
+                    serie.update(s_formateado)
+                    return serie
 
-            df_view['Descuento_Catalogo'] = formatear_descuento_vector(df_view['Descuento_Catalogo'])
+                df_view['Descuento_Catalogo'] = formatear_descuento_vector(df_view['Descuento_Catalogo'])
+            else:
+                df_view['Descuento_Catalogo'] = ""
+
         else:
             df_view['Descuento_Catalogo'] = ""
 
-        # Reordenar columnas para mostrar descuento catalogo
+        # Reordenar columnas para mostrar descuento catálogo
         if 'Descuento' in df_view.columns and 'Descuento_Catalogo' in df_view.columns:
             cols = list(df_view.columns)
             cols.remove('Descuento_Catalogo')
