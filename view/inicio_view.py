@@ -10,10 +10,8 @@ import pandas as pd
 from components.excelPy import run_excelPy
 
 from Style.styleInicioView import configure_ctk_style, configure_treeview_style
-from components.query import INVENTORY_SQL
 from components.exporter import exportar_dataframe_a_excel, export_pdfs_por_sucursal
-from components.services.pivot_service import PivotService
-from components.services.filter_service import apply_filters
+from components.services.inventory_service import InventoryService
 
 # UI modularizados
 from components.ui.placeholder_combo import PlaceholderCombo
@@ -23,18 +21,15 @@ from components.ui.button import Button
 
 PLACEHOLDER_REGION     = "Región"
 PLACEHOLDER_REFERENCIA = "Referencia"
-PLACEHOLDER_EXCLUDE    = "Marcas a excluir (separadas por coma)"
+PLACEHOLDER_EXCLUDE    = "CodigoMarcas a excluir (separadas por coma)"
 
 class InicioView(ctk.CTk):
     def __init__(self, engine, config_sql):
         super().__init__()
         self.engine = engine
         self.config_sql = config_sql
-        self.df_original = None
-        self.df_actual = None
-        self.catalogo_descuento = None
-        self.pivot_service = PivotService()
-        self.filter_mode = None  # 'unique', 'dup', or None
+
+        self.inventory_service = InventoryService(engine)
 
         self.filter_solo_coincide = ctk.BooleanVar(value=False)
         self.filter_solo_no_coincide = ctk.BooleanVar(value=False)
@@ -166,16 +161,14 @@ class InicioView(ctk.CTk):
             self.loading_label.configure(text="Cargando datos desde la base, por favor espere...")
             self.update_idletasks()
 
-            self.df_original = pd.read_sql(INVENTORY_SQL, self.engine)
+            self.inventory_service.importar_datos_sql()
 
-            suc = self.df_original[self.df_original['Region'].str.contains('Sucursales', na=False)]
+            suc = self.inventory_service.df_original[self.inventory_service.df_original['Region'].str.contains('Sucursales', na=False)]
             regiones = ["Todas"] + sorted(suc['Region'].dropna().unique())
             self.region_selector.reset_placeholder(values=regiones)
             self.region_selector.configure(state="normal")
-            refs = sorted(self.df_original['Referencia'].dropna().astype(str).unique())
+            refs = sorted(self.inventory_service.df_original['Referencia'].dropna().astype(str).unique())
             self.referencia_entry.reset_placeholder(values=refs)
-            self.pivot_service.clear()
-            self.catalogo_descuento = None
 
             self.loading_label.configure(text="Procesando datos...")
             self.update_idletasks()
@@ -197,16 +190,15 @@ class InicioView(ctk.CTk):
         self.loading_label.configure(text="Procesando archivo Excel importado...")
         self.update_idletasks()
 
-        self.df_original = df
+        self.inventory_service.importar_excel(df)
         try:
-            suc = self.df_original[self.df_original['Region'].str.contains('Sucursales', na=False)]
+            suc = self.inventory_service.df_original[self.inventory_service.df_original['Region'].str.contains('Sucursales', na=False)]
             regiones = ["Todas"] + sorted(suc['Region'].dropna().unique())
             self.region_selector.reset_placeholder(values=regiones)
             self.region_selector.configure(state="normal")
-            refs = sorted(self.df_original['Referencia'].dropna().astype(str).unique())
+            refs = sorted(self.inventory_service.df_original['Referencia'].dropna().astype(str).unique())
             self.referencia_entry.reset_placeholder(values=refs)
-            self.pivot_service.clear()
-            self.catalogo_descuento = None
+
             self._update_view()
             self.loading_label.configure(text="")
             messagebox.showinfo("Importación", "Excel importado correctamente.")
@@ -220,26 +212,13 @@ class InicioView(ctk.CTk):
             messagebox.showwarning("Importación cancelada", "No se importó catálogo de descuentos.")
             return
 
-        df_catalogo.columns = df_catalogo.columns.str.strip()
-
-        print("Columnas catálogo Excel:", df_catalogo.columns.tolist())
-        print("Primeras filas catálogo:\n", df_catalogo.head(10))
-
-        col_0 = df_catalogo['Concatenar']
-        col_6 = df_catalogo['% Descuento']
-
-        self.catalogo_descuento = pd.DataFrame({
-            'Concatenar': col_0,
-            'Descuento_Catalogo': col_6
-        })
-
-        print("Valores únicos en catálogo de descuentos:", self.catalogo_descuento['Descuento_Catalogo'].unique())
+        self.inventory_service.importar_catalogo_descuento(df_catalogo)
 
         messagebox.showinfo("Catálogo importado", "Catálogo de descuentos cargado correctamente.")
         self._update_view()
 
     def _update_view(self):
-        if self.df_original is None:
+        if self.inventory_service.df_original is None:
             return
 
         start_time = time.time()
@@ -252,102 +231,29 @@ class InicioView(ctk.CTk):
         else:
             self.btn_unique.grid_remove()
             self.btn_dup.grid_remove()
-            self.filter_mode = None
+            self.inventory_service.filter_mode = None
 
         opc = self.pivot_selector.get()
-        df_base = self.df_original
-        if opc == "Solo Sucursales":
-            df_base = df_base[df_base['Region'].str.contains('Sucursales', na=False)]
-        elif opc == "Solo Casa Matriz":
-            df_base = df_base[df_base['Region'].str.contains('Casa Matatriz', na=False)]
-
-        pivot_df = self.pivot_service.get_pivot(opc, df_base)
-        print("Tiempo pivote:", round(time.time() - start_time, 2), "segundos")
-        start_time = time.time()
-
         region = self.region_selector.get_value()
         referencia = self.referencia_entry.get_value()
         exclude_list = [m.strip() for m in self.exclude_entry.get().split(',') if m.strip()]
         solo_1 = self.promo_var.get()
 
-        df_view = apply_filters(
-            pivot_df,
+        df_view = self.inventory_service.aplicar_filtros(
             opc,
             region,
-            marca='',
-            referencia=referencia,
-            exclude_marcas=exclude_list,
-            solo_promo_1=solo_1
-        ).copy()
-        print("Tiempo filtros:", round(time.time() - start_time, 2), "segundos")
-        start_time = time.time()
+            referencia,
+            exclude_list,
+            solo_1,
+            self.promo_var.get(),
+            self.desc_dup_var.get(),
+            self.filter_solo_coincide.get(),
+            self.filter_solo_no_coincide.get()
+        )
 
-        if self.catalogo_descuento is not None:
-            df_view = df_view.merge(
-                self.catalogo_descuento,
-                how='left',
-                on='Concatenar'
-            )
-            print("Tiempo merge catálogo:", round(time.time() - start_time, 2), "segundos")
-            start_time = time.time()
-
-            df_view['Descuento_Catalogo'] = df_view['Descuento_Catalogo'].fillna("").replace(["nan", "NaN"], "")
-            mask_vacio = df_view['Descuento_Catalogo'].str.strip() == ""
-            df_view.loc[mask_vacio, 'Descuento_Catalogo'] = df_view.loc[mask_vacio, 'Descuento']
-
-            def formatear_descuento_vector(serie):
-                s = serie.astype(str).str.replace('%', '').str.strip()
-                s_num = pd.to_numeric(s, errors='coerce')
-                s_formateado = s_num.dropna().apply(lambda x: f"{int(round(x))}%")
-                serie.update(s_formateado)
-                return serie
-
-            df_view['Descuento_Catalogo'] = formatear_descuento_vector(df_view['Descuento_Catalogo'])
-        else:
-            df_view['Descuento_Catalogo'] = ""
-
-        if 'Descuento' in df_view.columns and 'Descuento_Catalogo' in df_view.columns:
-            cols = list(df_view.columns)
-            cols.remove('Descuento_Catalogo')
-            idx = cols.index('Descuento')
-            cols.insert(idx + 1, 'Descuento_Catalogo')
-            df_view = df_view[cols]
-
-        if self.filter_solo_coincide.get() and not self.filter_solo_no_coincide.get():
-            df_view = df_view[
-                (df_view['Descuento_Catalogo'].notna()) &
-                (df_view['Descuento'].notna()) &
-                (df_view['Descuento_Catalogo'] == df_view['Descuento'])
-            ]
-        elif self.filter_solo_no_coincide.get() and not self.filter_solo_coincide.get():
-            df_view = df_view[
-                (df_view['Descuento_Catalogo'].isna()) |
-                (df_view['Descuento'].isna()) |
-                (df_view['Descuento_Catalogo'] != df_view['Descuento'])
-            ]
-        elif self.filter_solo_coincide.get() and self.filter_solo_no_coincide.get():
-            pass
-
-        if 'Promocion' in df_view.columns:
-            serie = df_view['Promocion']
-            df_view['Promocion'] = (
-                serie.map({True:1, False:0, 'True':1, 'False':0,
-                           'true':1, 'false':0, '1':1, '0':0})
-                     .fillna(serie)
-                     .astype(int, errors='ignore')
-            )
-
-        if self.desc_dup_var.get() and 'Concatenar' in df_view.columns and 'Descuento' in df_view.columns:
-            df_view['_dup_desc'] = df_view.duplicated(subset=['Concatenar', 'Descuento'], keep=False)
-        else:
-            df_view['_dup_desc'] = False
-
-        if self.filter_mode == 'unique':
-            df_view = df_view[~df_view['_dup_desc']]
-        elif self.filter_mode == 'dup':
-            df_view = df_view[df_view['_dup_desc']]
-
-        self.df_actual = df_view.copy()
+        if df_view is None:
+            self.loading_label.configure(text="")
+            return
 
         for item in self.tree.get_children():
             self.tree.delete(item)
@@ -364,22 +270,22 @@ class InicioView(ctk.CTk):
         print("Tiempo total _update_view:", round(time.time() - start_time, 2), "segundos")
 
     def _set_filter_mode(self, mode):
-        self.filter_mode = None if self.filter_mode == mode else mode
+        self.inventory_service.set_filter_mode(mode)
         self._update_view()
 
     def _highlight_desc_duplicados(self):
         self.tree.tag_configure('dup', background='#3E1E50')
         self.tree.tag_configure('uniq', background='#1E502E')
-        for item_id, (_, row) in zip(self.tree.get_children(), self.df_actual.iterrows()):
+        for item_id, (_, row) in zip(self.tree.get_children(), self.inventory_service.df_actual.iterrows()):
             tag = 'dup' if row['_dup_desc'] else 'uniq'
             self.tree.item(item_id, tags=(tag,))
 
     def _open_pdf_selector(self):
-        if self.df_actual is None or self.df_actual.empty:
+        if self.inventory_service.df_actual is None or self.inventory_service.df_actual.empty:
             messagebox.showwarning("Sin datos", "Primero importa o filtra datos.")
             return
 
-        all_columns = list(self.df_actual.columns)
+        all_columns = list(self.inventory_service.df_actual.columns)
 
         branch_keywords = ['Casa Matriz', 'Sucursal']
 
@@ -416,11 +322,11 @@ class InicioView(ctk.CTk):
         Button(btn_frame, text="Aceptar", command=_confirm_columns).grid(row=0, column=2, padx=5, pady=5)
 
     def _open_branch_selector(self, selected_columns):
-        if self.df_actual is None or self.df_actual.empty:
+        if self.inventory_service.df_actual is None or self.inventory_service.df_actual.empty:
             messagebox.showwarning("Sin datos", "Primero importa o filtra datos.")
             return
 
-        all_columns = list(self.df_actual.columns)
+        all_columns = list(self.inventory_service.df_actual.columns)
         branch_keywords = ['Casa Matriz', 'Sucursal']
         branch_columns = [col for col in all_columns if any(kw in col for kw in branch_keywords)]
 
@@ -461,14 +367,14 @@ class InicioView(ctk.CTk):
             messagebox.showwarning("Exportación", "Debe seleccionar al menos una columna para exportar.")
             return
 
-        df_to_export = self.df_actual.loc[:, self.df_actual.columns.intersection(cols_to_export)].copy()
+        df_to_export = self.inventory_service.df_actual.loc[:, self.inventory_service.df_actual.columns.intersection(cols_to_export)].copy()
 
         print(f"Exportando PDF con columnas: {cols_to_export}")
 
         export_pdfs_por_sucursal(df_to_export, list(df_to_export.columns))
 
     def exportar_excel(self):
-        exportar_dataframe_a_excel(self.df_actual)
+        exportar_dataframe_a_excel(self.inventory_service.df_actual)
 
     def _style_treeview(self):
         configure_treeview_style()
