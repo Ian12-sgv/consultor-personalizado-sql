@@ -1,3 +1,4 @@
+# components/services/filter_service.py
 import pandas as pd
 from typing import List, Optional
 
@@ -12,39 +13,78 @@ def apply_filters(
     solo_promo_1: bool = False
 ) -> pd.DataFrame:
     """
-    Aplica filtros:
-      - Filtra por región (solo sucursales si aplica).
-      - Filtra por marca exacta.
-      - Filtra por referencia exacta (sin distinción de mayúsculas/minúsculas).
-      - Excluye las marcas listadas en exclude_marcas.
-      - Filtra solo Promoción=1 si solo_promo_1=True.
+    Aplica filtros al DataFrame sin romper si faltan columnas.
+
+    Reglas:
+    - Early return: si TODOS los filtros están "vacíos" (region en 'Todas' o vacío,
+      marca vacía, referencia vacía, sin exclude_marcas, y solo_promo_1=False),
+      devuelve el DataFrame tal cual (estado "sin cambios").
+    - Región: sólo cuando opcion == "Solo Sucursales" y existe 'Region' (match exacto).
+    - Marca: exacta si existe 'CodigoMarca'.
+    - Referencia: exacta, case-insensitive, si existe 'Referencia'.
+    - Excluir marcas: si existe 'CodigoMarca'.
+    - Solo Promoción = 1: si existe 'Promocion'.
     """
 
     if df is None or df.empty:
         return df
 
-    # Región (solo sucursales)
-    if opcion == "Solo Sucursales" and region and region != "Todas" and 'Region' in df.columns:
-        df = df[df['Region'] == region]
+    # Normalización de entradas
+    ref = (str(referencia).strip() if referencia is not None else "")
+    # Evita filtrar por el placeholder accidentalmente
+    if ref.lower() == "referencia":
+        ref = ""
 
-    # Filtrar exacto por marca
-    if marca and 'CodigoMarca' in df.columns:
-        df = df[df['CodigoMarca'].astype(str) == marca]
+    cleaned_excludes = [m.strip() for m in (exclude_marcas or []) if m and m.strip()]
 
-    # Filtrar exacto por referencia (case-insensitive)
-    if referencia and 'Referencia' in df.columns:
-        ref_norm = str(referencia).strip().lower()
-        df = df[df['Referencia'].astype(str).str.strip().str.lower() == ref_norm]
+    # --- Early return (sin filtros "reales") ---
+    if ((not region or region == "Todas")
+        and not marca
+        and not ref
+        and not cleaned_excludes
+        and not solo_promo_1):
+        return df
 
-    # Excluir marcas personalizadas
-    if exclude_marcas and 'CodigoMarca' in df.columns:
-        # Normalizar a mayúsculas y sin espacios
-        to_exclude = {m.strip().upper() for m in exclude_marcas if m.strip()}
-        df = df[~df['CodigoMarca'].astype(str).str.upper().isin(to_exclude)]
+    out = df
 
+    # -------------------------
+    # Filtro por Región (sólo sucursales)
+    # -------------------------
+    if (
+        opcion == "Solo Sucursales"
+        and region
+        and region != "Todas"
+        and "Region" in out.columns
+    ):
+        out = out[out["Region"] == region]
+
+    # -------------------------
+    # Filtro por Marca exacta
+    # -------------------------
+    if marca and "CodigoMarca" in out.columns:
+        out = out[out["CodigoMarca"].astype(str) == str(marca)]
+
+    # -------------------------
+    # Filtro por Referencia (exacto, case-insensitive)
+    # -------------------------
+    if ref and "Referencia" in out.columns:
+        ref_norm = ref.lower()
+        out = out[out["Referencia"].astype(str).str.strip().str.lower() == ref_norm]
+    # Si no existe 'Referencia', se ignora silenciosamente.
+
+    # -------------------------
+    # Excluir Marcas
+    # -------------------------
+    if cleaned_excludes and "CodigoMarca" in out.columns:
+        excluir = {m.upper() for m in cleaned_excludes}
+        if excluir:
+            out = out[~out["CodigoMarca"].astype(str).str.upper().isin(excluir)]
+
+    # -------------------------
     # Solo Promoción = 1
-    if solo_promo_1 and 'Promocion' in df.columns:
-        promo_num = pd.to_numeric(df['Promocion'], errors='coerce')
-        df = df[promo_num.eq(1)]
+    # -------------------------
+    if solo_promo_1 and "Promocion" in out.columns:
+        promo_num = pd.to_numeric(out["Promocion"], errors="coerce")
+        out = out[promo_num.eq(1)]
 
-    return df
+    return out

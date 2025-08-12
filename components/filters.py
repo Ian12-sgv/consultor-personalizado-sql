@@ -1,75 +1,152 @@
-# components/filters.py
-import streamlit as st
-import pandas as pd
+import customtkinter as ctk
+from components.ui.placeholder_combo import PlaceholderCombo
+from components.ui.button import Button
+from components.ui.debounce import Debouncer
 
-# --- Helpers cacheados --------------------------------------------------------
-@st.cache_data(show_spinner=False)
-def _unique_sorted(series: pd.Series):
-    return ["Todas"] + sorted(series.dropna().unique().tolist())
 
-@st.cache_data(show_spinner=False)
-def _ensure_ref_lower(df: pd.DataFrame):
-    if "Referencia" not in df.columns:
-        return None
-    return df["Referencia"].astype(str).str.lower()
+class FilterPanel(ctk.CTkFrame):
+    def __init__(self, master, on_filter_change):
+        super().__init__(master)
+        self.on_filter_change = on_filter_change
+        self.filter_mode = None
 
-# ------------------------------------------------------------------------------
+        self.grid_columnconfigure((0, 1), weight=1)
 
-EXCLUDE_CODES = {"GRD", "DNE", "DIE"}  # códigos a excluir cuando el check esté activo
+        # Pivot selector
+        self.pivot_selector = ctk.CTkComboBox(
+            self, values=["Todo", "Solo Sucursales", "Solo Casa Matriz"],
+            command=lambda _: self._on_change()
+        )
+        self.pivot_selector.set("Todo")
+        self.pivot_selector.grid(row=0, column=0, padx=10, pady=5, sticky="ew")
 
-def filter_sidebar(df: pd.DataFrame) -> pd.DataFrame:
-    """
-    Filtros de Marca, Región, Referencia y un check para excluir ciertos códigos de marca.
-    """
-    if df is None or df.empty:
-        st.sidebar.warning("No hay datos disponibles para filtrar.")
-        return df
+        # Región selector
+        self.region_selector = PlaceholderCombo(
+            self, placeholder="Región", values=["Todas"], state="disabled",
+            command=lambda _: self._on_change()
+        )
+        self.region_selector.grid(row=0, column=1, padx=10, pady=5, sticky="ew")
 
-    if not {'NombreMarca', 'Region'}.issubset(df.columns):
-        return df
+        # Referencia selector
+        self.referencia_entry = PlaceholderCombo(
+            self, placeholder="Referencia", values=[""], state="normal",
+            command=lambda _: self._on_change()  # si selecciona de la lista
+        )
+        self.referencia_entry.grid(row=1, column=0, columnspan=2, padx=10, pady=5, sticky="ew")
 
-    st.sidebar.header("Filtros")
+        # Debouncer para tecleo y Enter en Referencia
+        self._debounce_ref = Debouncer(self, delay_ms=300)
+        self.referencia_entry.bind("<KeyRelease>", lambda e: self._debounce_ref.call(self._on_change))
+        self.referencia_entry.bind("<Return>", lambda e: self._on_change())
 
-    # Listas cacheadas
-    marcas   = _unique_sorted(df["NombreMarca"])
-    regiones = _unique_sorted(df["Region"])
-    ref_low  = _ensure_ref_lower(df)
+        # ==== NUEVO: Año a excluir ====
+        self.year_exclude_entry = ctk.CTkEntry(
+            self, placeholder_text="Año a excluir (e.g., 2023)", width=200
+        )
+        self.year_exclude_entry.grid(row=2, column=0, columnspan=2, padx=10, pady=5, sticky="ew")
+        self.year_exclude_entry.bind("<Return>", lambda e: self._on_change())
+        # ===============================
 
-    # Widgets
-    marca_sel  = st.sidebar.selectbox("Marca",   marcas,   index=0)
-    region_sel = st.sidebar.selectbox("Región",  regiones, index=0)
+        # Excluir marcas entry (bajo el año)
+        self.exclude_entry = ctk.CTkEntry(
+            self, placeholder_text="Marcas a excluir (separadas por coma)", width=200
+        )
+        self.exclude_entry.grid(row=3, column=0, columnspan=2, padx=10, pady=5, sticky="ew")
+        self.exclude_entry.bind("<Return>", lambda e: self._on_change())
 
-    ref_text = ""
-    if ref_low is not None:
-        ref_text = st.sidebar.text_input("Referencia (contiene)", value="", placeholder="Ej: 160PFR").strip().lower()
+        # Checkbox Solo Promoción
+        self.promo_var = ctk.BooleanVar(value=False)
+        ctk.CTkCheckBox(
+            self, text="Solo Promoción = 1",
+            variable=self.promo_var,
+            command=self._on_change
+        ).grid(row=4, column=0, columnspan=2, padx=10, pady=5, sticky="w")
 
-    excluir_codigos = False
-    if "CodigoMarca" in df.columns:
-        excluir_codigos = st.sidebar.checkbox("Excluir códigos GRD / DNE / DIE", value=False)
+        # Checkbox Resaltar Descuento Duplicados
+        self.desc_dup_var = ctk.BooleanVar(value=False)
+        ctk.CTkCheckBox(
+            self, text="Resaltar Descuento Duplicados",
+            variable=self.desc_dup_var,
+            command=self._on_change
+        ).grid(row=5, column=0, columnspan=2, padx=10, pady=5, sticky="w")
 
-    # Máscara
-    mask = pd.Series(True, index=df.index)
+        # Botones Solo no duplicados / Solo duplicados
+        self.btn_unique = Button(
+            self,
+            text="Solo no duplicados",
+            command=lambda: self._set_filter_mode('unique'),
+            fg_color="#27ae60",
+            hover_color="#2ecc71",
+            row=6, column=0, padx=10, pady=5
+        )
+        self.btn_dup = Button(
+            self,
+            text="Solo duplicados",
+            command=lambda: self._set_filter_mode('dup'),
+            fg_color="#e74c3c",
+            hover_color="#c0392b",
+            row=6, column=1, padx=10, pady=5
+        )
+        self.btn_unique.grid_remove()
+        self.btn_dup.grid_remove()
 
-    if marca_sel != "Todas":
-        mask &= (df["NombreMarca"] == marca_sel)
+        # Mostrar solo coincidencias / no coincidencias
+        self.filter_solo_coincide = ctk.BooleanVar(value=False)
+        ctk.CTkCheckBox(
+            self,
+            text="Mostrar solo coincidencias",
+            variable=self.filter_solo_coincide,
+            command=self._on_change
+        ).grid(row=7, column=0, columnspan=2, padx=10, pady=5, sticky="w")
 
-    if region_sel != "Todas":
-        mask &= (df["Region"] == region_sel)
+        self.filter_solo_no_coincide = ctk.BooleanVar(value=False)
+        ctk.CTkCheckBox(
+            self,
+            text="Mostrar solo no coincidencias",
+            variable=self.filter_solo_no_coincide,
+            command=self._on_change
+        ).grid(row=8, column=0, columnspan=2, padx=10, pady=5, sticky="w")
 
-    if ref_low is not None and ref_text:
-        mask &= ref_low.str.contains(ref_text, na=False)
+    # ---- helpers ----
+    def _set_filter_mode(self, mode):
+        self.filter_mode = None if self.filter_mode == mode else mode
+        self._on_change()
 
-    if excluir_codigos and "CodigoMarca" in df.columns:
-        mask &= ~df["CodigoMarca"].astype(str).str.upper().isin(EXCLUDE_CODES)
+    def _on_change(self):
+        self.on_filter_change()
 
-    df_filtrado = df[mask]
+    def _get_referencia_safe(self) -> str:
+        val = self.referencia_entry.get_value()
+        if not val:
+            return ""
+        val = str(val).strip()
+        if val.lower() == "referencia":  # por si es placeholder
+            return ""
+        return val
 
-    # Resumen
-    resumen = f"**Marca:** {marca_sel} — **Región:** {region_sel}"
-    if ref_text:
-        resumen += f" — **Ref:** '{ref_text}'"
-    if excluir_codigos:
-        resumen += " — **Excluyendo GRD/DNE/DIE**"
-    st.sidebar.markdown(resumen)
+    def _get_year_exclude_safe(self):
+        raw = (self.year_exclude_entry.get() or "").strip()
+        return raw  # lo validamos en el service
 
-    return df_filtrado
+    # ---- API pública ----
+    def get_filters(self):
+        return {
+            "pivot": self.pivot_selector.get(),
+            "region": self.region_selector.get_value(),
+            "referencia": self._get_referencia_safe(),
+            "exclude_marcas": [m.strip() for m in self.exclude_entry.get().split(',') if m.strip()],
+            "solo_promo_1": self.promo_var.get(),
+            "desc_dup": self.desc_dup_var.get(),
+            "filter_mode": self.filter_mode,
+            "filter_solo_coincide": self.filter_solo_coincide.get(),
+            "filter_solo_no_coincide": self.filter_solo_no_coincide.get(),
+            # NUEVO
+            "exclude_year": self._get_year_exclude_safe(),
+        }
+
+    def set_region_values(self, values):
+        self.region_selector.reset_placeholder(values=values)
+        self.region_selector.configure(state="normal")
+
+    def set_referencia_values(self, values):
+        self.referencia_entry.reset_placeholder(values=values)
