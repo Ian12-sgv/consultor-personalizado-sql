@@ -222,7 +222,7 @@ class InventoryService:
             if opc == "Solo Sucursales":
                 df_base = df_base[df_base['Region'].str.contains('Sucursales', na=False)]
             elif opc == "Solo Casa Matriz":
-                df_base = df_base[df_base['Region'].str_contains('Casa Matriz', na=False)]
+                df_base = df_base[df_base['Region'].str.contains('Casa Matriz', na=False)]
 
         # Excluir año ANTES del pivot
         df_base = self._exclude_year_pre_pivot(df_base, exclude_year)
