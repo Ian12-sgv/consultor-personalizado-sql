@@ -33,14 +33,32 @@ class InicioView(ctk.CTk):
         self._is_updating = False
 
         self.title("Inicio - Importación de Datos")
-        self.geometry("1100x700")
+        # ventana un poco más ancha para el sidebar + tabla
+        self.geometry("1200x700")
         configure_ctk_style()
-        self.grid_rowconfigure(2, weight=1)
-        self.grid_columnconfigure(0, weight=1)
 
-        # Panel de filtros
-        self.filter_panel = FilterPanel(self, on_filter_change=self._update_view)
-        self.filter_panel.grid(row=0, column=0, sticky="ew", padx=10, pady=10)
+        # Layout raíz: 2 columnas (sidebar fija + contenido flexible)
+        self.grid_rowconfigure(0, weight=1)          # toda la altura para el bloque principal
+        self.grid_columnconfigure(0, weight=0, minsize=350)   # sidebar
+        self.grid_columnconfigure(1, weight=1)                # contenido
+
+        # -------------------------
+        # Sidebar (scrollable) con filtros
+        # -------------------------
+        self.filter_container = ctk.CTkScrollableFrame(self, corner_radius=12)
+        self.filter_container.grid(row=0, column=0, sticky="nsw", padx=10, pady=10)
+
+        # Filtros dentro del sidebar
+        self.filter_panel = FilterPanel(self.filter_container, on_filter_change=self._update_view)
+        self.filter_panel.pack(fill="x", expand=False, padx=4, pady=4)
+
+        # -------------------------
+        # Contenido (botones + tabla)
+        # -------------------------
+        self.right_container = ctk.CTkFrame(self, corner_radius=12)
+        self.right_container.grid(row=0, column=1, sticky="nsew", padx=10, pady=10)
+        self.right_container.grid_rowconfigure(1, weight=1)  # la fila 1 (tabla) se expande
+        self.right_container.grid_columnconfigure(0, weight=1)
 
         # Panel de botones con callbacks
         callbacks = {
@@ -50,22 +68,20 @@ class InicioView(ctk.CTk):
             "importar_excel": self.importar_excel,
             "importar_catalogo_descuento": self.importar_catalogo_descuento,
         }
-        self.botones_panel = BotonesPanel(self, callbacks)
-        self.botones_panel.grid(row=1, column=0, sticky="ew", padx=10, pady=5)
+        self.botones_panel = BotonesPanel(self.right_container, callbacks)
+        self.botones_panel.grid(row=0, column=0, sticky="ew", padx=10, pady=(10, 6))
 
         # Tabla
-        self.datos_treeview = DatosTreeview(self)
-        self.datos_treeview.grid(row=2, column=0, sticky="nsew", padx=10, pady=10)
+        self.datos_treeview = DatosTreeview(self.right_container)
+        self.datos_treeview.grid(row=1, column=0, sticky="nsew", padx=10, pady=(0, 10))
 
         # Label de carga
-        self.loading_label = ctk.CTkLabel(self, text="")
-        self.loading_label.grid(row=3, column=0, pady=(0, 10))
+        self.loading_label = ctk.CTkLabel(self.right_container, text="")
+        self.loading_label.grid(row=2, column=0, pady=(0, 10))
 
         self._style_treeview()
 
-    # ==========
-    # Helpers de orquestación
-    # ==========
+    # ========== Helpers de orquestación ==========
     @contextmanager
     def _busy(self, msg: str):
         """Context manager para estados de carga y log simple."""
@@ -84,17 +100,24 @@ class InicioView(ctk.CTk):
         if df is None:
             return
 
-        # Región
+        # Región (si existe)
         if 'Region' in df.columns:
             suc = df[df['Region'].str.contains('Sucursales', na=False)]
             regiones = ["Todas"] + sorted(suc['Region'].dropna().unique())
             print("[InicioView] set_region_values ->", regiones[:5], "..." if len(regiones) > 5 else "")
-            self.filter_panel.set_region_values(regiones)
+            # si quitaste el filtro de región del FilterPanel, comenta la línea siguiente:
+            try:
+                self.filter_panel.set_region_values(regiones)
+            except Exception:
+                pass
         else:
             print("[InicioView] df_original sin 'Region' -> ['Todas']")
-            self.filter_panel.set_region_values(["Todas"])
+            try:
+                self.filter_panel.set_region_values(["Todas"])
+            except Exception:
+                pass
 
-        # Referencia
+        # Referencia (si existe)
         if 'Referencia' in df.columns:
             refs = sorted(df['Referencia'].dropna().astype(str).unique())
             print("[InicioView] set_referencia_values ->", refs[:5], "..." if len(refs) > 5 else "")
@@ -112,14 +135,13 @@ class InicioView(ctk.CTk):
             print("[InicioView] _apply_filters_and_render: no hay df_original")
             return
 
-        # Evitar reentradas (p. ej. múltiples eventos encadenados)
         if self._is_updating:
             print("[InicioView] _apply_filters_and_render: ocupado, salto")
             return
+
         self._is_updating = True
         try:
             filters = self.filter_panel.get_filters()
-            # Si nada cambió y no es un refresh forzado (cambio de datos), no recomputar
             if not force and filters == self._last_filters:
                 print("[InicioView] filtros sin cambios; no se recomputa")
                 return
@@ -135,17 +157,19 @@ class InicioView(ctk.CTk):
                 self.filter_panel.btn_dup.grid_remove()
 
             df_view = self.inventory_service.aplicar_filtros(
-                filters["pivot"],
-                filters["region"],
-                filters["referencia"],
-                filters["exclude_marcas"],
-                filters["solo_promo_1"],
-                filters["solo_promo_1"],          # promo_var (reutilizamos el mismo)
-                filters["desc_dup"],
-                filters["filter_solo_coincide"],
-                filters["filter_solo_no_coincide"],
-                filters["filter_mode"],
-                exclude_year=filters.get("exclude_year")  # <-- NUEVO
+                filters.get("pivot"),
+                filters.get("region"),
+                filters.get("referencia"),
+                filters.get("exclude_marcas"),
+                filters.get("solo_promo_1"),
+                filters.get("solo_promo_1"),          # promo_var (reutilizamos el mismo)
+                filters.get("desc_dup"),
+                filters.get("filter_solo_coincide"),
+                filters.get("filter_solo_no_coincide"),
+                filters.get("filter_mode"),
+                exclude_year=filters.get("exclude_year"),
+                exclude_sublineas=filters.get("exclude_sublineas"),
+                solo_matriz_exist_1_11=filters.get("solo_matriz_exist_1_11")  # <-- NUEVO
             )
 
             if df_view is None:
@@ -153,7 +177,6 @@ class InicioView(ctk.CTk):
                 return
 
             self.datos_treeview.render_data(df_view, highlight_dups=filters["desc_dup"])
-            # Actualizar cache de filtros tras render exitoso
             self._last_filters = filters
         finally:
             self._is_updating = False
@@ -169,9 +192,7 @@ class InicioView(ctk.CTk):
             self._apply_filters_and_render(force=True)
         messagebox.showinfo("Listo", success_msg)
 
-    # ==========
-    # Acciones (orquestadas)
-    # ==========
+    # ========== Acciones ==========
     def importar_datos(self):
         print("[InicioView] importar_datos()")
         try:
@@ -223,7 +244,6 @@ class InicioView(ctk.CTk):
             def _ingest():
                 self.inventory_service.importar_catalogo_descuento(df_catalogo)
 
-            # Ingerimos catálogo y refrescamos (cambia coincidencias, aunque filtros sean iguales)
             with self._busy("Cargando catálogo..."):
                 _ingest()
                 self._apply_filters_and_render(force=True)
@@ -237,9 +257,7 @@ class InicioView(ctk.CTk):
         with self._busy("Aplicando filtros..."):
             self._apply_filters_and_render()
 
-    # ==========
-    # Exportaciones
-    # ==========
+    # ========== Exportaciones ==========
     def _open_pdf_selector(self):
         df = self.inventory_service.df_actual
         if df is None or df.empty:
@@ -261,8 +279,6 @@ class InicioView(ctk.CTk):
     def exportar_excel(self):
         exportar_dataframe_a_excel(self.inventory_service.df_actual)
 
-    # ==========
-    # Estilos tabla
-    # ==========
+    # ========== Estilos tabla ==========
     def _style_treeview(self):
         configure_treeview_style()

@@ -1,5 +1,6 @@
 # components/services/inventory_service.py
 import pandas as pd
+import unicodedata
 from components.query import INVENTORY_SQL
 from components.services.filter_service import apply_filters
 from components.services.pivot_service import PivotService
@@ -65,11 +66,9 @@ class InventoryService:
         Excluye filas cuyo AÑO == exclude_year. Ignora día/mes.
 
         Soporta:
-          - columna de año: 'Año' / 'Anio' / 'Year' (con/sin espacios, cualquier casing)
-          - columna de fecha: cualquier col cuyo nombre contenga 'fecha',
-            o iguale 'fechadoc' / 'date' / 'fecharegistro' (con/sin espacios, cualquier casing)
-
-        Si no encuentra columnas compatibles o el año no es válido, devuelve df sin cambios.
+          - columna de año: 'Año' / 'Anio' / 'Year'
+          - columna de fecha: cualquier col que contenga 'fecha'
+            o iguale 'fechadoc' / 'date' / 'fecharegistro'
         """
         if df is None or df.empty:
             return df
@@ -94,10 +93,7 @@ class InventoryService:
         # 2) columnas de FECHA (buscar candidatas por nombre)
         fecha_candidates = []
         for norm_name, original in norm_map.items():
-            if (
-                "fecha" in norm_name
-                or norm_name in ("fechadoc", "date", "fecharegistro")
-            ):
+            if ("fecha" in norm_name) or (norm_name in ("fechadoc", "date", "fecharegistro")):
                 fecha_candidates.append(original)
 
         # probar candidatas de fecha hasta que alguna parsee
@@ -109,12 +105,89 @@ class InventoryService:
         # 3) último intento: escanear todas las columnas y ver si alguna parsea a fecha
         for col in df.columns:
             years = pd.to_datetime(df[col], errors="coerce", dayfirst=True).dt.year
-            # si al menos un 50% parsea a fechas, lo consideramos columna de fecha
             if years.notna().mean() >= 0.5:
                 return df[years.ne(year)]
 
         # 4) no se encontró nada compatible
         return df
+
+    # -----------------------
+    # Helper: normalización de nombres
+    # -----------------------
+    @staticmethod
+    def _norm_name(s: str) -> str:
+        if s is None:
+            return ""
+        s = str(s).strip().lower().replace(" ", "").replace("_", "")
+        # quitar acentos
+        s = unicodedata.normalize("NFKD", s)
+        s = "".join(ch for ch in s if not unicodedata.combining(ch))
+        return s
+
+    # -----------------------
+    # Helper: solo Casa Matriz con existencia en rango (1..11)
+    # -----------------------
+    def _apply_only_matriz_exist_range(self, df: pd.DataFrame, min_val: int = 1, max_val: int = 11) -> pd.DataFrame:
+        """
+        Mantiene únicamente filas de Casa Matriz cuya existencia total esté entre min_val y max_val (inclusive).
+
+        Prioridad:
+        1) Si existe una columna de pivot tipo 'Casa_matriz_Total' (o variantes),
+           se usa esa columna directamente.
+        2) Si no, se filtra por Region='Casa Matriz' y se intenta detectar una
+           columna genérica de existencia/stock/cantidad/inventario.
+        """
+        if df is None or df.empty:
+            return df
+
+        # --- 1) Buscar columna de pivot estilo "Casa_matriz_Total" ---
+        normalized = {orig: self._norm_name(orig) for orig in df.columns}
+        candidates = []
+        for orig, n in normalized.items():
+            if n in ("casamatriztotal", "totalcasamatriz"):
+                candidates.append(orig)
+            elif n.startswith("casamatriz") and any(k in n for k in ("total", "existencia", "stock", "cantidad", "inventario")):
+                candidates.append(orig)
+
+        if candidates:
+            col = candidates[0]
+            s = pd.to_numeric(df[col], errors="coerce")
+            mask = s.ge(min_val) & s.le(max_val)  # 1..11
+            return df[mask]
+
+        # --- 2) Fallback: Region='Casa Matriz' + columna genérica de existencia ---
+        out = df
+        if "Region" in out.columns:
+            out = out[out["Region"].astype(str).str.contains("Casa Matriz", na=False)]
+            if out.empty:
+                return out
+
+        def find_exist_col(columns):
+            prio = [
+                "existenciatotal", "existencia",
+                "stocktotal", "stock",
+                "cantidadtotal", "cantidad",
+                "inventariototal", "inventario",
+            ]
+            # exactos por prioridad
+            for wanted in prio:
+                for c in columns:
+                    if self._norm_name(c) == wanted:
+                        return c
+            # por contiene
+            for c in columns:
+                n = self._norm_name(c)
+                if any(k in n for k in ["existencia", "stock", "cantidad", "inventario"]):
+                    return c
+            return None
+
+        exist_col = find_exist_col(out.columns)
+        if not exist_col:
+            return out
+
+        vals = pd.to_numeric(out[exist_col], errors="coerce")
+        mask = vals.ge(min_val) & vals.le(max_val)
+        return out[mask]
 
     # -----------------------
     # Filtros + composición
@@ -124,25 +197,19 @@ class InventoryService:
         opc,
         region,
         referencia,
-        exclude_list,
+        exclude_list,             # lista de marcas a excluir
         solo_1,
-        promo_var,  # firma compatible (no se usa directamente)
+        promo_var,                # firma compatible (no se usa directamente)
         desc_dup_var,
         filter_solo_coincide,
         filter_solo_no_coincide,
         filter_mode,
-        exclude_year=None,   # NUEVO (opcional)
+        exclude_year=None,        # opcional
+        exclude_sublineas=None,   # opcional: lista de sublíneas a excluir
+        solo_matriz_exist_1_11: bool = False,  # opcional: Casa Matriz con existencia 1..11
     ):
         """
-        Aplica:
-          - filtro de región (si existe)
-          - exclusión de año (pre-pivot)
-          - pivot (via PivotService)
-          - filtros base (marca='', referencia, marcas excluidas, solo_promo_1)
-          - merge con catálogo de descuentos si existe
-          - modo coincidencias / no coincidencias
-          - normaliza Promocion a 0/1
-          - marca duplicados por ('Concatenar','Descuento') y aplica filter_mode
+        Pipeline completo de filtros y composición de vista.
         """
         if self.df_original is None:
             return None
@@ -155,7 +222,7 @@ class InventoryService:
             if opc == "Solo Sucursales":
                 df_base = df_base[df_base['Region'].str.contains('Sucursales', na=False)]
             elif opc == "Solo Casa Matriz":
-                df_base = df_base[df_base['Region'].str.contains('Casa Matriz', na=False)]
+                df_base = df_base[df_base['Region'].str_contains('Casa Matriz', na=False)]
 
         # Excluir año ANTES del pivot
         df_base = self._exclude_year_pre_pivot(df_base, exclude_year)
@@ -172,16 +239,21 @@ class InventoryService:
         if 'Referencia' not in pivot_df.columns:
             referencia = ''  # evita filtrar por referencia si no está
 
-        # Filtros base
+        # Filtros base (incluye exclude_sublineas)
         df_view = apply_filters(
             pivot_df,
-            opc,
-            region,
+            opcion=opc,
+            region=region,
             marca='',
             referencia=referencia,
             exclude_marcas=exclude_list,
-            solo_promo_1=solo_1
+            solo_promo_1=solo_1,
+            exclude_sublineas=exclude_sublineas,
         ).copy()
+
+        # Solo Casa Matriz con existencia 1..11 (si se activó)
+        if solo_matriz_exist_1_11:
+            df_view = self._apply_only_matriz_exist_range(df_view, 1, 11)
 
         # Merge catálogo de descuentos (si está disponible)
         if self.catalogo_descuento is not None:
