@@ -156,7 +156,7 @@ UltimoMovimiento AS (
   INNER JOIN [J101010100_999911].[dbo].[TRANSFERENCIAS] T ON T.Numero = MT.Numero
   INNER JOIN [J101010100_999911].[dbo].[SUCURSALES] S ON S.Codigo = T.CodigoRecibe
   INNER JOIN [J101010100_999911].[dbo].[FABRICANTES] F ON F.Codigo = I.Fabricante
-  WHERE T.Fecha BETWEEN '20240101' AND GETDATE()
+  --WHERE T.Fecha BETWEEN '20240101' AND GETDATE()
     --AND T.CodigoRecibe IN ('999999')
     AND T.Status IN ('2')
     AND MT.Cantidad NOT IN ('1', '-1')

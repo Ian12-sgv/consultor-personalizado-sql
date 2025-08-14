@@ -125,6 +125,66 @@ class InventoryService:
         return s
 
     # -----------------------
+    # NUEVO: detectar columna de existencia (nivel “base”)
+    # -----------------------
+    def _find_exist_col(self, df: pd.DataFrame):
+        """
+        Detecta una columna plausible de existencia/stock/cantidad/inventario
+        en el dataframe “base” (pre-pivot).
+        """
+        if df is None or df.empty:
+            return None
+        priority = [
+            "existenciatotal", "existencia",
+            "stocktotal", "stock",
+            "cantidadtotal", "cantidad",
+            "inventariototal", "inventario",
+        ]
+        # exactos por prioridad
+        for c in df.columns:
+            if self._norm_name(c) in priority:
+                return c
+        # por contiene
+        for c in df.columns:
+            n = self._norm_name(c)
+            if any(k in n for k in ["existencia", "stock", "cantidad", "inventario"]):
+                return c
+        return None
+
+    # -----------------------
+    # NUEVO: anular promo/desc en filas sin stock (pre-pivot)
+    # -----------------------
+    def _normalize_discount_and_promo_by_stock(self, df: pd.DataFrame) -> pd.DataFrame:
+        """
+        Fuerza Promocion=0 y Descuento=0 (o '0%') en filas con existencia <= 0,
+        para que el pivot no “suba” promos/desc desde tiendas sin stock.
+        """
+        if df is None or df.empty:
+            return df
+        out = df.copy()
+
+        exist_col = self._find_exist_col(out)
+        if not exist_col:
+            return out  # si no hay columna de existencia detectable, no tocamos nada
+
+        exist_vals = pd.to_numeric(out[exist_col], errors="coerce").fillna(0)
+        no_stock = exist_vals <= 0
+
+        # Promoción -> 0
+        if 'Promocion' in out.columns:
+            out.loc[no_stock, 'Promocion'] = 0
+
+        # Descuento -> 0 manteniendo estilo (num o "NN%")
+        if 'Descuento' in out.columns:
+            as_text = out['Descuento'].astype(str)
+            if as_text.str.contains('%').any():
+                out.loc[no_stock, 'Descuento'] = "0%"
+            else:
+                out.loc[no_stock, 'Descuento'] = 0
+
+        return out
+
+    # -----------------------
     # Helper: solo Casa Matriz con existencia en rango (1..11)
     # -----------------------
     def _apply_only_matriz_exist_range(self, df: pd.DataFrame, min_val: int = 1, max_val: int = 11) -> pd.DataFrame:
@@ -226,6 +286,9 @@ class InventoryService:
 
         # Excluir año ANTES del pivot
         df_base = self._exclude_year_pre_pivot(df_base, exclude_year)
+
+        # <<< NUEVO: anular promo/desc cuando no hay stock (pre-pivot) >>>
+        df_base = self._normalize_discount_and_promo_by_stock(df_base)
 
         # Si cambió el año a excluir, invalida caché del pivot
         if exclude_year != self._last_exclude_year:
